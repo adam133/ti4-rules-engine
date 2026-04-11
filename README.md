@@ -170,8 +170,27 @@ with open("pbd22295.json") as fh:
 
 state = from_asyncti4(raw)
 print(state.game_id, state.phase, state.round_number)
-# pbd22295 action 3
+# pbd22295 action 1
 ```
+
+Key mapping from the AsyncTI4 JSON to `GameState`:
+
+| AsyncTI4 JSON | `GameState` / `PlayerState` field | Notes |
+|---|---|---|
+| `gameName` | `game_id` | |
+| `gameRound` | `round_number` | |
+| `lawsInPlay` | `law_ids` | |
+| `playerData[].userName` | player key + `player_id` | |
+| `playerData[].faction` | `faction_id` | |
+| `playerData[].totalVps` | `victory_points` | |
+| `playerData[].scs` | `strategy_card_ids` | Ints converted to strings |
+| `playerData[].techs` | `researched_technologies` | |
+| `playerData[].tg` | `trade_goods` | |
+| `playerData[].isSpeaker` | `turn_order.speaker_id` | Per-player flag |
+| `playerData[].active` | `active_player_id` | Per-player flag |
+| Phase | Inferred from `strategyCards[].played` | No explicit phase field |
+| Action card IDs | *(not exposed)* | Only count (`acCount`) is exported |
+| Promissory note IDs | *(not exposed)* | Only count (`pnCount`) is exported |
 
 ## Player Options
 
