@@ -19,7 +19,8 @@ from game flow (Engine).
 | Package | Purpose |
 |---|---|
 | `/models` | Pydantic V2 schemas for Factions, Planets, Units, Technologies, and Cards |
-| `/engine` | Phase state machine (`RoundEngine`) and undo/redo history (`GameHistory`) |
+| `/engine` | Phase state machine (`RoundEngine`), undo/redo history (`GameHistory`), and player-options query (`get_player_options`) |
+| `/adapters` | Converters from external game-state formats (e.g. AsyncTI4 JSON) into the engine's native `GameState` |
 | `/registry` | Searchable component database (`ComponentRegistry`) and modifier system (`EffectRegistry`) |
 | `/utils` | Asset-mapping utilities for linking game IDs to visual assets |
 
@@ -149,6 +150,60 @@ path = mapper.resolve("jol_nar", AssetType.FACTION_ICON)
 mapper.register_override("ghosts_of_creuss", AssetType.FACTION_ICON, "/custom/creuss.png")
 ```
 
+## AsyncTI4 Adapter
+
+The `adapters.asyncti4` module converts the JSON snapshot produced by the
+[AsyncTI4 Discord bot](https://github.com/AsyncTI4/TI4_map_generator_bot)
+into the engine's native `GameState`.  The bot publishes each game's snapshot
+to S3 at:
+
+```
+https://s3.us-east-1.amazonaws.com/asyncti4.com/webdata/{gameId}/{gameId}.json
+```
+
+```python
+import json
+from adapters.asyncti4 import from_asyncti4
+
+with open("pbd22295.json") as fh:
+    raw = json.load(fh)
+
+state = from_asyncti4(raw)
+print(state.game_id, state.phase, state.round_number)
+# pbd22295 action 3
+```
+
+## Player Options
+
+Given a `GameState` and a player ID, `get_player_options` returns every
+action that player may legally take under TI4 rules at that moment:
+
+```python
+from engine import get_player_options
+from engine.options import PlayerAction
+
+options = get_player_options(state, player_id="alice")
+print(options.phase, options.available_actions)
+# action [tactical_action, component_action, strategic_action, pass]
+
+if PlayerAction.STRATEGIC_ACTION in options.available_actions:
+    print("Alice may use her strategy card's primary ability.")
+```
+
+The complete set of `PlayerAction` values:
+
+| Action | Phase | Condition |
+|---|---|---|
+| `pick_strategy_card` | Strategy | Player does not yet hold a strategy card |
+| `tactical_action` | Action | Player has not passed |
+| `strategic_action` | Action | Player has not passed **and** holds a strategy card |
+| `component_action` | Action | Player has not passed |
+| `pass` | Action | Player has not passed |
+| `score_objective` | Status | Always |
+| `ready_cards` | Status | Always |
+| `cast_votes` | Agenda | Always |
+| `abstain` | Agenda | Always |
+
 ## Project Roadmap
 
 ### Phase 1 – Foundation & Schema ✅
@@ -165,3 +220,7 @@ mapper.register_override("ghosts_of_creuss", AssetType.FACTION_ICON, "/custom/cr
 - [x] `RoundEngine` – phase state machine (Strategy → Action → Status → Agenda)
 - [x] `GameHistory` – undo/redo with configurable depth
 - [x] Structured logging via `structlog` on every phase transition
+
+### Phase 4 – External State Ingestion & Player Options ✅
+- [x] `AsyncTI4` adapter – parse the AsyncTI4 Discord bot JSON export into native `GameState`
+- [x] `get_player_options` – return rules-allowable actions for a player given the current state
