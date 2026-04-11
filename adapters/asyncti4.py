@@ -36,7 +36,7 @@ from models.state import GamePhase, GameState, PlayerState, TurnOrder
 
 # ---------------------------------------------------------------------------
 # Phase mapping – AsyncTI4 uses lowercase strings identical to the engine's
-# GamePhase StrEnum values, but we normalise to guard against casing drift.
+# GamePhase StrEnum values, but we normalize to guard against casing drift.
 # ---------------------------------------------------------------------------
 
 _PHASE_MAP: dict[str, GamePhase] = {
@@ -118,8 +118,8 @@ class AsyncTI4GameData(BaseModel):
 
     @field_validator("phase", mode="before")
     @classmethod
-    def normalise_phase(cls, v: Any) -> str:
-        """Normalise phase to lower-case so casing differences are handled."""
+    def normalize_phase(cls, v: Any) -> str:
+        """Normalize phase to lower-case so casing differences are handled."""
         return str(v).lower()
 
 

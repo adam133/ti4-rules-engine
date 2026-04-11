@@ -219,7 +219,7 @@ class TestAsyncTI4GameDataSchema:
         with pytest.raises(ValidationError):
             AsyncTI4GameData.model_validate(data)
 
-    def test_phase_normalised_to_lowercase(self) -> None:
+    def test_phase_normalized_to_lowercase(self) -> None:
         parsed = AsyncTI4GameData.model_validate({**SAMPLE_DATA, "phase": "ACTION"})
         assert parsed.phase == "action"
 
