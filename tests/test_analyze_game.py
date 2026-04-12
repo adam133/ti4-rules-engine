@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
-import pytest
-
-from scripts.analyze_game import get_adjacent_positions, get_reachable_systems
-
+from models.state import GameState, PlayerState, TurnOrder
+from scripts.analyze_game import (
+    _build_movement_context,
+    _get_planet_ri,
+    _get_reach_info,
+    _get_tactical_reach,
+    get_adjacent_positions,
+    get_reachable_systems,
+)
 
 # ---------------------------------------------------------------------------
 # get_adjacent_positions – adjacency algorithm
@@ -165,8 +170,6 @@ class TestGetReachableSystems:
 # ---------------------------------------------------------------------------
 # get_reachable_systems – anomaly subtype rules
 # ---------------------------------------------------------------------------
-
-from scripts.analyze_game import _build_movement_context  # noqa: E402
 
 
 class TestAnomalySubtypeRules:
@@ -352,3 +355,197 @@ class TestWormholeAdjacency:
         tile_positions["101"] = "26"  # ALPHA, alone
         _, wha = _build_movement_context(tile_positions)
         assert "101" not in wha
+
+
+# ---------------------------------------------------------------------------
+# _get_reach_info – rift tracking and path cost
+# ---------------------------------------------------------------------------
+
+
+class TestGetReachInfo:
+    """Tests for _get_reach_info: path_cost and via_rift."""
+
+    _ALL_POSITIONS = (
+        ["000"]
+        + [f"10{i}" for i in range(1, 7)]
+        + [f"2{i:02d}" for i in range(1, 13)]
+    )
+    _OPEN_MAP: dict = {pos: _make_tile_data() for pos in _ALL_POSITIONS}
+
+    def _tile_positions(self, overrides: dict[str, str]) -> dict[str, str]:
+        base = {pos: "1" for pos in self._ALL_POSITIONS}
+        base.update(overrides)
+        return base
+
+    def test_path_cost_one_hop(self) -> None:
+        info = _get_reach_info("000", 2, self._OPEN_MAP, "red")
+        # Ring-1 tiles are 1 hop from 000
+        assert info["101"]["path_cost"] == 1
+
+    def test_path_cost_two_hops(self) -> None:
+        info = _get_reach_info("000", 2, self._OPEN_MAP, "red")
+        # Ring-2 tiles are 2 hops from 000
+        assert info["201"]["path_cost"] == 2
+
+    def test_via_rift_false_when_no_rift(self) -> None:
+        info = _get_reach_info("000", 2, self._OPEN_MAP, "red")
+        assert info["201"]["via_rift"] is False
+
+    def test_via_rift_true_when_only_rift_path(self) -> None:
+        # Ring 2 reached only via 101 (rift) with fleet_move=1.
+        # Without rift bonus the ring-2 tiles are unreachable at move 1.
+        tile_positions = self._tile_positions({"101": "41"})  # 41 = gravity rift
+        tile_type_map, wha = _build_movement_context(tile_positions)
+        info = _get_reach_info(
+            "000", 1, self._OPEN_MAP, "red",
+            tile_type_map=tile_type_map,
+            wormhole_adjacency=wha,
+        )
+        # 101 itself is reachable with or without rift bonus (cost 1)
+        assert info["101"]["via_rift"] is False
+        # A ring-2 tile adjacent to 101 (e.g. 201) should be via_rift=True
+        # because without the bonus move=1 can't reach ring 2
+        assert info["201"]["via_rift"] is True
+
+    def test_needs_gravity_drive_carrier_with_two_hop_dest(self) -> None:
+        """Carrier (move 1) should appear in needs_gravity_drive for 2-hop dest."""
+        tile_unit_data = {pos: _make_tile_data() for pos in self._ALL_POSITIONS}
+        # Place a carrier (cv, move 1) and destroyer (dd, move 2) at 000
+        tile_unit_data["000"]["space"] = {
+            "testfaction": [
+                {"entityId": "cv", "entityType": "unit", "count": 1},
+                {"entityId": "dd", "entityType": "unit", "count": 1},
+            ]
+        }
+        state = GameState(
+            game_id="test",
+            turn_order=TurnOrder(speaker_id="p1", order=["p1"]),
+            players={
+                "p1": PlayerState(
+                    player_id="p1",
+                    faction_id="testfaction",
+                    controlled_planets=[],
+                    exhausted_planets=[],
+                    researched_technologies=[],
+                )
+            },
+            extra={"tile_unit_data": tile_unit_data, "tile_positions": {}},
+        )
+        reach = _get_tactical_reach("p1", state)
+        fleets = reach["fleets"]
+        assert len(fleets) == 1
+        fleet = fleets[0]
+        assert fleet["from_pos"] == "000"
+        assert fleet["fleet_move"] == 1  # limited by carrier
+        # All destinations are 1 hop (fleet_move=1); no gravity drive needed
+        for dest in fleet["destinations"]:
+            assert dest["needs_gravity_drive"] == []
+
+    def test_special_position_via_wormhole(self) -> None:
+        """Fleets at special positions (e.g. 'br') use wormhole adjacency."""
+        # Build a map: 'br' has a DELTA wormhole tile (17), and 101 also has one
+        tile_unit_data = {pos: _make_tile_data() for pos in self._ALL_POSITIONS}
+        tile_unit_data["br"] = _make_tile_data()
+        tile_unit_data["br"]["space"] = {
+            "wormfaction": [
+                {"entityId": "dd", "entityType": "unit", "count": 1},
+            ]
+        }
+        # tile_positions maps 'br' to DELTA tile and '101' to DELTA tile
+        tile_positions = {pos: "1" for pos in self._ALL_POSITIONS}
+        tile_positions["br"] = "17"   # DELTA wormhole
+        tile_positions["101"] = "17"  # DELTA wormhole partner
+
+        state = GameState(
+            game_id="test",
+            turn_order=TurnOrder(speaker_id="p1", order=["p1"]),
+            players={
+                "p1": PlayerState(
+                    player_id="p1",
+                    faction_id="wormfaction",
+                    controlled_planets=[],
+                    exhausted_planets=[],
+                    researched_technologies=[],
+                )
+            },
+            extra={"tile_unit_data": tile_unit_data, "tile_positions": tile_positions},
+        )
+        reach = _get_tactical_reach("p1", state)
+        fleets = reach["fleets"]
+        # The fleet at 'br' should reach '101' via DELTA wormhole
+        assert len(fleets) == 1
+        dest_positions = {d["pos"] for d in fleets[0]["destinations"]}
+        assert "101" in dest_positions
+
+    def test_special_position_no_wormhole_in_no_adjacency(self) -> None:
+        """Special positions with no wormholes appear in no_adjacency."""
+        tile_unit_data = {pos: _make_tile_data() for pos in self._ALL_POSITIONS}
+        tile_unit_data["br"] = _make_tile_data()
+        tile_unit_data["br"]["space"] = {
+            "nofaction": [
+                {"entityId": "dd", "entityType": "unit", "count": 1},
+            ]
+        }
+        state = GameState(
+            game_id="test",
+            turn_order=TurnOrder(speaker_id="p1", order=["p1"]),
+            players={
+                "p1": PlayerState(
+                    player_id="p1",
+                    faction_id="nofaction",
+                    controlled_planets=[],
+                    exhausted_planets=[],
+                    researched_technologies=[],
+                )
+            },
+            extra={"tile_unit_data": tile_unit_data, "tile_positions": {}},
+        )
+        reach = _get_tactical_reach("p1", state)
+        assert "br" in reach["no_adjacency"]
+
+
+# ---------------------------------------------------------------------------
+# _get_planet_ri – planet resource/influence extraction
+# ---------------------------------------------------------------------------
+
+
+class TestGetPlanetRI:
+    def test_extracts_resources_and_influence(self) -> None:
+        tile_unit_data = {
+            "101": {
+                "planets": {
+                    "mecatol": {
+                        "resources": 1,
+                        "influence": 6,
+                        "exhausted": False,
+                        "controlledBy": "red",
+                        "entities": {},
+                    }
+                }
+            }
+        }
+        ri = _get_planet_ri(tile_unit_data)
+        assert ri["mecatol"] == {"resources": 1, "influence": 6}
+
+    def test_skips_planet_without_ri(self) -> None:
+        tile_unit_data = {
+            "101": {
+                "planets": {
+                    "unknown": {"entities": {}}
+                }
+            }
+        }
+        ri = _get_planet_ri(tile_unit_data)
+        assert "unknown" not in ri
+
+    def test_empty_tile_unit_data(self) -> None:
+        assert _get_planet_ri({}) == {}
+
+    def test_multiple_tiles(self) -> None:
+        tile_unit_data = {
+            "101": {"planets": {"p1": {"resources": 2, "influence": 1, "entities": {}}}},
+            "102": {"planets": {"p2": {"resources": 0, "influence": 3, "entities": {}}}},
+        }
+        ri = _get_planet_ri(tile_unit_data)
+        assert ri["p1"]["resources"] == 2
+        assert ri["p2"]["influence"] == 3

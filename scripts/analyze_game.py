@@ -12,6 +12,7 @@ Example::
 
 from __future__ import annotations
 
+import functools
 import json
 import sys
 import urllib.request
@@ -24,6 +25,12 @@ if TYPE_CHECKING:
 
 S3_URL_TEMPLATE = (
     "https://s3.us-east-1.amazonaws.com/asyncti4.com/webdata/{game}/{game}.json"
+)
+
+# URL for the AsyncTI4 bot's technology data (all tech aliases and full names).
+_ASYNCTI4_TECH_URL = (
+    "https://raw.githubusercontent.com/AsyncTI4/TI4_map_generator_bot"
+    "/master/src/main/resources/data/technologies/pok.json"
 )
 
 # ---------------------------------------------------------------------------
@@ -180,6 +187,42 @@ def _build_movement_context(
 
 
 # ---------------------------------------------------------------------------
+# Static data: fetch tech names from AsyncTI4 GitHub
+# ---------------------------------------------------------------------------
+
+
+def fetch_tech_names() -> dict[str, str]:
+    """Fetch alias→full-name mapping for all technologies from the AsyncTI4 bot.
+
+    Returns a dict mapping the short alias used in game exports (e.g. ``"amd"``)
+    to the full display name (e.g. ``"Antimass Deflectors"``).  Falls back to an
+    empty dict if the network request fails so the caller can display raw aliases.
+    Results are cached after the first successful call.
+    """
+    return _fetch_tech_names_cached()
+
+
+@functools.cache
+def _fetch_tech_names_cached() -> dict[str, str]:
+    """Cached implementation of :func:`fetch_tech_names`."""
+    try:
+        with urllib.request.urlopen(_ASYNCTI4_TECH_URL, timeout=10) as resp:  # noqa: S310
+            techs: list[dict[str, Any]] = json.loads(resp.read().decode("utf-8"))
+        return {
+            t["alias"]: t["name"]
+            for t in techs
+            if isinstance(t, dict) and "alias" in t and "name" in t
+        }
+    except (URLError, json.JSONDecodeError, KeyError, TypeError) as exc:
+        print(
+            f"Warning: could not fetch tech names from AsyncTI4 GitHub ({exc!r}); "
+            "showing raw tech aliases.",
+            file=sys.stderr,
+        )
+        return {}
+
+
+# ---------------------------------------------------------------------------
 # Fleet movement BFS
 # ---------------------------------------------------------------------------
 
@@ -193,6 +236,24 @@ _SHIP_MOVE: dict[str, int] = {
     "dn": 1,   # dreadnought
     "fs": 1,   # flagship (conservative default)
     "ws": 3,   # war sun
+}
+
+# Human-readable names for the unit entity IDs used in AsyncTI4 exports.
+# Note: cruisers appear as both 'ca' and 'cr' depending on the faction/upgrade;
+# both map to the same display name.
+_UNIT_NAMES: dict[str, str] = {
+    "cv": "carrier",
+    "dd": "destroyer",
+    "ca": "cruiser",
+    "cr": "cruiser",
+    "dn": "dreadnought",
+    "fs": "flagship",
+    "ws": "war sun",
+    "ff": "fighter",
+    "gf": "infantry",
+    "mf": "mech",
+    "pd": "PDS",
+    "sd": "space dock",
 }
 
 _TRANSPORTED_UNITS = frozenset({"ff", "gf", "mf"})  # fighter, ground force, mech
@@ -214,6 +275,97 @@ def _fleet_move_value(units: list[dict[str, Any]]) -> int:
         and u.get("entityId") in _SHIP_MOVE
     ]
     return min(move_vals) if move_vals else 0
+
+
+def _summarise_units(units: list[dict[str, Any]]) -> list[str]:
+    """Return a sorted list of ``"<name> x<count>"`` strings for space ships.
+
+    Transported units (fighters, infantry, mechs) and non-unit entities are
+    excluded.  A count of 1 is omitted (shows just ``"carrier"`` not
+    ``"carrier x1"``).
+    """
+    counts: dict[str, int] = {}
+    for u in units:
+        if not isinstance(u, dict) or u.get("entityType") != "unit":
+            continue
+        eid = u.get("entityId", "")
+        if eid in _TRANSPORTED_UNITS:
+            continue
+        name = _UNIT_NAMES.get(eid, eid)
+        counts[name] = counts.get(name, 0) + u.get("count", 1)
+
+    parts = []
+    for name, cnt in sorted(counts.items()):
+        parts.append(name if cnt == 1 else f"{name} x{cnt}")
+    return parts
+
+
+def _bfs(
+    starting_pos: str,
+    fleet_move: int,
+    tile_unit_data: dict[str, Any],
+    faction: str,
+    tile_type_map: dict[str, dict[str, Any]] | None = None,
+    wormhole_adjacency: dict[str, frozenset[str]] | None = None,
+    has_antimass_deflectors: bool = False,
+    *,
+    ignore_gravity_rift_bonus: bool = False,
+) -> dict[str, int]:
+    """BFS from *starting_pos*, returning ``{position: best_remaining_moves}``.
+
+    This is the shared core for :func:`get_reachable_systems` and
+    :func:`_get_reach_info`.  When *ignore_gravity_rift_bonus* is ``True``
+    gravity-rift tiles are treated as normal tiles (cost 1 to enter) so that a
+    second BFS run can identify destinations only reachable via the rift bonus.
+    """
+    if fleet_move <= 0:
+        return {}
+
+    best_remaining: dict[str, int] = {starting_pos: fleet_move}
+    queue: deque[tuple[str, int]] = deque([(starting_pos, fleet_move)])
+
+    while queue:
+        pos, remaining = queue.popleft()
+        if remaining <= 0:
+            continue
+
+        neighbours = list(get_adjacent_positions(pos))
+        if wormhole_adjacency:
+            for wh_pos in wormhole_adjacency.get(pos, frozenset()):
+                if wh_pos not in neighbours:
+                    neighbours.append(wh_pos)
+
+        for adj_pos in neighbours:
+            if adj_pos not in tile_unit_data:
+                continue
+            tile_data = tile_unit_data[adj_pos]
+
+            if faction in tile_data.get("ccs", []):
+                continue
+
+            if tile_type_map is not None:
+                info = tile_type_map.get(adj_pos, {})
+                if info.get("supernova"):
+                    continue
+                if info.get("asteroid") and not has_antimass_deflectors:
+                    continue
+                if info.get("gravity_rift") and not ignore_gravity_rift_bonus:
+                    new_remaining = remaining  # net cost 0 (−1 + rift bonus +1)
+                elif info.get("nebula"):
+                    new_remaining = 0
+                else:
+                    new_remaining = remaining - 1
+            else:
+                if tile_data.get("anomaly", False):
+                    continue
+                new_remaining = remaining - 1
+
+            if best_remaining.get(adj_pos, -1) < new_remaining:
+                best_remaining[adj_pos] = new_remaining
+                if new_remaining > 0:
+                    queue.append((adj_pos, new_remaining))
+
+    return best_remaining
 
 
 def get_reachable_systems(
@@ -247,81 +399,93 @@ def get_reachable_systems(
     * The starting position itself is not included in the result.
     * Only positions present in *tile_unit_data* are considered (tiles off the
       map are ignored).
+    * Tiles at special positions (e.g. ``"br"``, ``"tl"``) have no hex-grid
+      neighbours; they are reachable/can reach other tiles only via wormholes.
     """
-    if fleet_move <= 0:
-        return set()
+    best = _bfs(
+        starting_pos,
+        fleet_move,
+        tile_unit_data,
+        faction,
+        tile_type_map=tile_type_map,
+        wormhole_adjacency=wormhole_adjacency,
+        has_antimass_deflectors=has_antimass_deflectors,
+    )
+    return {pos for pos in best if pos != starting_pos}
 
-    # BFS state: position → best remaining moves reaching that position
-    best_remaining: dict[str, int] = {starting_pos: fleet_move}
-    queue: deque[tuple[str, int]] = deque([(starting_pos, fleet_move)])
-    reachable: set[str] = set()
 
-    while queue:
-        pos, remaining = queue.popleft()
-        if remaining <= 0:
+def _get_reach_info(
+    starting_pos: str,
+    fleet_move: int,
+    tile_unit_data: dict[str, Any],
+    faction: str,
+    tile_type_map: dict[str, dict[str, Any]] | None = None,
+    wormhole_adjacency: dict[str, frozenset[str]] | None = None,
+    has_antimass_deflectors: bool = False,
+) -> dict[str, dict[str, Any]]:
+    """Return movement details for each reachable tile.
+
+    Returns a dict mapping each reachable position (excluding *starting_pos*)
+    to a sub-dict with:
+
+    ``path_cost`` : int
+        Minimum number of movement points spent to reach this position
+        (``fleet_move - best_remaining``).
+    ``via_rift`` : bool
+        ``True`` when the destination is only reachable by passing through at
+        least one gravity-rift tile (i.e. the rift's +1 bonus is essential).
+    """
+    bfs_kwargs: dict[str, Any] = dict(
+        tile_unit_data=tile_unit_data,
+        faction=faction,
+        tile_type_map=tile_type_map,
+        wormhole_adjacency=wormhole_adjacency,
+        has_antimass_deflectors=has_antimass_deflectors,
+    )
+    best_with = _bfs(starting_pos, fleet_move, ignore_gravity_rift_bonus=False, **bfs_kwargs)
+    best_without = _bfs(starting_pos, fleet_move, ignore_gravity_rift_bonus=True, **bfs_kwargs)
+    reachable_without_rift = {pos for pos in best_without if pos != starting_pos}
+
+    result: dict[str, dict[str, Any]] = {}
+    for pos, remaining in best_with.items():
+        if pos == starting_pos:
             continue
-
-        # Neighbours via hex-grid adjacency + wormhole connections
-        neighbours = list(get_adjacent_positions(pos))
-        if wormhole_adjacency:
-            for wh_pos in wormhole_adjacency.get(pos, frozenset()):
-                if wh_pos not in neighbours:
-                    neighbours.append(wh_pos)
-
-        for adj_pos in neighbours:
-            if adj_pos not in tile_unit_data:
-                continue
-            tile_data = tile_unit_data[adj_pos]
-
-            # Cannot enter a tile the player has already activated
-            if faction in tile_data.get("ccs", []):
-                continue
-
-            # Determine movement cost and reachability for this tile
-            if tile_type_map is not None:
-                info = tile_type_map.get(adj_pos, {})
-                # Supernova and Scar: completely impassable
-                if info.get("supernova"):
-                    continue
-                # Asteroid field: impassable without Antimass Deflectors
-                if info.get("asteroid") and not has_antimass_deflectors:
-                    continue
-                # Gravity Rift: moving into/through costs 0 net move (+1 bonus)
-                if info.get("gravity_rift"):
-                    new_remaining = remaining  # remaining - 1 + 1 = remaining
-                # Nebula: can enter, but cannot move further from there
-                elif info.get("nebula"):
-                    new_remaining = 0
-                else:
-                    new_remaining = remaining - 1
-            else:
-                # Legacy fallback: treat all anomaly tiles as impassable
-                if tile_data.get("anomaly", False):
-                    continue
-                new_remaining = remaining - 1
-
-            if best_remaining.get(adj_pos, -1) < new_remaining:
-                best_remaining[adj_pos] = new_remaining
-                reachable.add(adj_pos)
-                if new_remaining > 0:
-                    queue.append((adj_pos, new_remaining))
-
-    return reachable
+        result[pos] = {
+            "path_cost": fleet_move - remaining,
+            "via_rift": pos not in reachable_without_rift,
+        }
+    return result
 
 
 def _get_tactical_reach(
     player_id: str,
-    state: "GameState",
-) -> tuple[dict[str, list[str]], list[str]]:
-    """Return reachable tiles and a list of special-position warnings.
+    state: GameState,
+) -> dict[str, Any]:
+    """Return tactical-reach information for all of a player's unlocked fleets.
 
-    Returns:
-        A 2-tuple of:
-        * ``reachable``: ``{tile_position: [planet_names]}`` for tiles
-          reachable by the player's unlocked fleets.
-        * ``special_positions``: list of position strings where the player
-          has an unlocked fleet but adjacency cannot be computed (e.g. "br",
-          "tl").
+    Returns a dict with:
+
+    ``fleets`` : list[dict]
+        One entry per starting position that has an unlocked mobile fleet.
+        Each entry has keys ``"from_pos"``, ``"units"`` (human-readable ship
+        list), and ``"destinations"`` (list of destination dicts).
+
+        Each destination dict has:
+
+        ``"pos"`` : str
+            Tile position string.
+        ``"planets"`` : list[str]
+            Planet names (or IDs) in the destination tile.
+        ``"via_rift"`` : bool
+            ``True`` if the destination is only reachable through a gravity rift.
+        ``"needs_gravity_drive"`` : list[str]
+            Ships in the fleet whose individual movement value is less than the
+            path cost — they would need the *Gravity Drive* technology to make
+            this move without holding back the fleet.
+
+    ``no_adjacency`` : list[str]
+        Positions where the player has an unlocked fleet but no adjacency can be
+        computed (special positions with no wormhole connections).
 
     The AsyncTI4 export uses the player's faction name as the identifier
     inside ``tileUnitData`` (not the player's token-colour slug).
@@ -329,14 +493,12 @@ def _get_tactical_reach(
     """
     tile_unit_data: dict[str, Any] = state.extra.get("tile_unit_data", {})
     if not tile_unit_data:
-        return {}, []
+        return {"fleets": [], "no_adjacency": []}
     player = state.players.get(player_id)
     if player is None:
-        return {}, []
-    # tileUnitData uses the faction name (e.g. "jolnar") as the per-player key
+        return {"fleets": [], "no_adjacency": []}
     faction = player.faction_id
 
-    # Build per-position tile type info and wormhole adjacency when available
     tile_positions: dict[str, str] = state.extra.get("tile_positions", {})
     tile_type_map: dict[str, dict[str, Any]] | None = None
     wormhole_adjacency: dict[str, frozenset[str]] | None = None
@@ -345,8 +507,11 @@ def _get_tactical_reach(
 
     has_amd = "amd" in (player.researched_technologies or [])
 
-    reachable: dict[str, list[str]] = {}
-    special_positions: list[str] = []
+    fleets: list[dict[str, Any]] = []
+    no_adjacency: list[str] = []
+    # Accumulate all reachable positions across all fleets to avoid duplicates
+    # in the destination list (same tile reachable from multiple starting points).
+    all_reachable: dict[str, list[str]] = {}
 
     for tile_pos, tile_data in tile_unit_data.items():
         space = tile_data.get("space") or {}
@@ -355,18 +520,12 @@ def _get_tactical_reach(
         # Skip locked tiles (player already placed a CC here)
         if faction in tile_data.get("ccs", []):
             continue
-        fleet_move = _fleet_move_value(space[faction])
+        fleet_units: list[dict[str, Any]] = space[faction]
+        fleet_move = _fleet_move_value(fleet_units)
         if fleet_move <= 0:
             continue
-        # Special positions (non-numeric like "br", "tl") cannot be pathfound
-        # using the hex-grid formula.  Note: "000" (centre) is numeric and
-        # handled normally by get_adjacent_positions / get_reachable_systems.
-        try:
-            int(tile_pos)
-        except ValueError:
-            special_positions.append(tile_pos)
-            continue
-        for dest in get_reachable_systems(
+
+        reach_info = _get_reach_info(
             tile_pos,
             fleet_move,
             tile_unit_data,
@@ -374,12 +533,75 @@ def _get_tactical_reach(
             tile_type_map=tile_type_map,
             wormhole_adjacency=wormhole_adjacency,
             has_antimass_deflectors=has_amd,
-        ):
-            if dest not in reachable:
-                planets = list((tile_unit_data.get(dest) or {}).get("planets", {}).keys())
-                reachable[dest] = planets
+        )
 
-    return reachable, special_positions
+        if not reach_info:
+            # No adjacency reachable (e.g. special position with no wormholes)
+            no_adjacency.append(tile_pos)
+            continue
+
+        unit_labels = _summarise_units(fleet_units)
+
+        destinations: list[dict[str, Any]] = []
+        for dest, info in sorted(reach_info.items()):
+            path_cost = info["path_cost"]
+            via_rift = info["via_rift"]
+            planets = list((tile_unit_data.get(dest) or {}).get("planets", {}).keys())
+
+            needs_gd_seen: set[str] = set()
+            needs_gd: list[str] = []
+            for u in fleet_units:
+                if not isinstance(u, dict) or u.get("entityType") != "unit":
+                    continue
+                eid = u.get("entityId", "")
+                if eid not in _SHIP_MOVE:
+                    continue
+                ind_move = _SHIP_MOVE[eid]
+                if ind_move < path_cost:
+                    label = _UNIT_NAMES.get(eid, eid)
+                    cnt = u.get("count", 1)
+                    entry = label if cnt == 1 else f"{label} x{cnt}"
+                    if entry not in needs_gd_seen:
+                        needs_gd_seen.add(entry)
+                        needs_gd.append(entry)
+
+            destinations.append({
+                "pos": dest,
+                "planets": planets,
+                "via_rift": via_rift,
+                "needs_gravity_drive": needs_gd,
+            })
+            all_reachable[dest] = planets
+
+        fleets.append({
+            "from_pos": tile_pos,
+            "units": unit_labels,
+            "fleet_move": fleet_move,
+            "destinations": destinations,
+        })
+
+    return {"fleets": fleets, "no_adjacency": no_adjacency}
+
+
+def _get_planet_ri(
+    tile_unit_data: dict[str, Any],
+) -> dict[str, dict[str, Any]]:
+    """Extract per-planet static data from *tileUnitData*.
+
+    Returns a dict ``{planet_id: {"resources": int, "influence": int}}``
+    built from the planet entries embedded in each tile's data.  Only planets
+    with non-null ``resources`` and ``influence`` fields are included.
+    """
+    planet_ri: dict[str, dict[str, Any]] = {}
+    for tile_data in tile_unit_data.values():
+        for pid, pdata in (tile_data.get("planets") or {}).items():
+            if not isinstance(pdata, dict):
+                continue
+            res = pdata.get("resources")
+            inf = pdata.get("influence")
+            if res is not None and inf is not None:
+                planet_ri[pid] = {"resources": int(res), "influence": int(inf)}
+    return planet_ri
 
 
 # ---------------------------------------------------------------------------
@@ -400,7 +622,7 @@ def fetch_game_json(game_number: str) -> dict:
     return json.loads(raw)
 
 
-def print_game_summary(state: "GameState") -> None:
+def print_game_summary(state: GameState) -> None:
     """Print a human-readable summary of the game state."""
     print()
     print("=" * 60)
@@ -415,9 +637,13 @@ def print_game_summary(state: "GameState") -> None:
     print("=" * 60)
 
 
-def print_player_summary(state: "GameState", player_options_map: dict) -> None:
+def print_player_summary(state: GameState, player_options_map: dict) -> None:
     """Print per-player details and available actions."""
     from engine.options import PlayerAction
+
+    tech_names = fetch_tech_names()
+    tile_unit_data: dict[str, Any] = state.extra.get("tile_unit_data", {})
+    planet_ri = _get_planet_ri(tile_unit_data)
 
     print()
     print("  PLAYERS")
@@ -446,7 +672,35 @@ def print_player_summary(state: "GameState", player_options_map: dict) -> None:
             f"    Planets:  {len(player.controlled_planets)} controlled"
             f", {len(player.exhausted_planets)} exhausted"
         )
-        print(f"    Techs:    {', '.join(player.researched_technologies) or '(none)'}")
+
+        # --- Readied planets with resources / influence ---
+        exhausted = set(player.exhausted_planets)
+        ready_planets = [p for p in player.controlled_planets if p not in exhausted]
+        total_ready_res = sum(planet_ri.get(p, {}).get("resources", 0) for p in ready_planets)
+        total_ready_inf = sum(planet_ri.get(p, {}).get("influence", 0) for p in ready_planets)
+        if ready_planets:
+            planet_parts = []
+            for p in sorted(ready_planets):
+                ri = planet_ri.get(p)
+                if ri:
+                    planet_parts.append(f"{p} ({ri['resources']}R/{ri['influence']}I)")
+                else:
+                    planet_parts.append(p)
+            print(
+                f"    Readied:  {total_ready_res} resources, {total_ready_inf} influence"
+                f"  — {', '.join(planet_parts)}"
+            )
+        else:
+            print("    Readied:  0 resources, 0 influence  — (all planets exhausted)")
+
+        # --- Technologies (full names where available) ---
+        tech_ids = player.researched_technologies
+        if tech_ids:
+            tech_display = [tech_names.get(t, t) for t in tech_ids]
+            print(f"    Techs:    {', '.join(tech_display)}")
+        else:
+            print("    Techs:    (none)")
+
         if player.strategy_card_ids:
             print(f"    Strat cards: {', '.join(player.strategy_card_ids)}")
         if player.scored_objectives:
@@ -460,20 +714,35 @@ def print_player_summary(state: "GameState", player_options_map: dict) -> None:
                 print("    Available actions: (none)")
 
             if PlayerAction.TACTICAL_ACTION in opts.available_actions:
-                reach, special_positions = _get_tactical_reach(player_id, state)
-                if reach:
-                    lines = []
-                    for pos in sorted(reach):
-                        planets = reach[pos]
-                        planet_str = ", ".join(planets) if planets else "(empty space)"
-                        lines.append(f"{pos}: {planet_str}")
+                reach = _get_tactical_reach(player_id, state)
+                fleets = reach.get("fleets", [])
+                no_adj = reach.get("no_adjacency", [])
+
+                if fleets:
                     print("    Tactical reach (unlocked fleets):")
-                    for line in lines:
-                        print(f"      {line}")
-                if special_positions:
+                    for fleet in sorted(fleets, key=lambda f: f["from_pos"]):
+                        unit_str = ", ".join(fleet["units"]) or "(unknown)"
+                        print(
+                            f"      From {fleet['from_pos']}"
+                            f" [fleet: {unit_str}, move {fleet['fleet_move']}]:"
+                        )
+                        for dest in fleet["destinations"]:
+                            pos = dest["pos"]
+                            planets = dest["planets"]
+                            planet_str = ", ".join(planets) if planets else "(empty space)"
+                            flags: list[str] = []
+                            if dest["via_rift"]:
+                                flags.append("gravity rift path — all ships at risk")
+                            if dest["needs_gravity_drive"]:
+                                gd_ships = ", ".join(dest["needs_gravity_drive"])
+                                flags.append(f"needs Gravity Drive: {gd_ships}")
+                            flag_str = f"  [{'; '.join(flags)}]" if flags else ""
+                            print(f"        → {pos}: {planet_str}{flag_str}")
+
+                if no_adj:
                     print(
                         "    Tactical reach: fleets at special position(s) "
-                        f"{', '.join(sorted(special_positions))} — adjacency unknown"
+                        f"{', '.join(sorted(no_adj))} — no wormhole adjacency known"
                     )
 
     print()
