@@ -340,6 +340,129 @@ result_boosted = simulate_combat(
 
 
 
+## Scoring Methods
+
+`models.objective` and `engine.scoring` provide a complete framework for
+modelling and evaluating TI4 scoring conditions.
+
+### Objective Model
+
+Every scoring opportunity in TI4 is represented by an `Objective`:
+
+```python
+from models.objective import Objective, ObjectiveType, ScoringCondition, ScoringConditionType
+
+expand_borders = Objective(
+    id="expand_borders",
+    name="Expand Borders",
+    objective_type=ObjectiveType.STAGE_1,
+    points=1,
+    description="Control 6 planets outside of your home system.",
+    condition=ScoringCondition(
+        condition_type=ScoringConditionType.CONTROL_N_PLANETS_OUTSIDE_HOME,
+        threshold=6,
+    ),
+)
+
+diversify_research = Objective(
+    id="diversify_research",
+    name="Diversify Research",
+    objective_type=ObjectiveType.STAGE_1,
+    points=1,
+    description="Own 2 technologies in each of 2 different colors.",
+    condition=ScoringCondition(
+        condition_type=ScoringConditionType.OWN_N_TECHS_IN_N_COLORS,
+        threshold=2,           # 2 techs per color
+        secondary_threshold=2, # in 2 different colors
+    ),
+)
+```
+
+`ObjectiveType` values:
+
+| Value | Description |
+|---|---|
+| `stage_1` | Public objective worth 1 VP |
+| `stage_2` | Public objective worth 2 VP |
+| `secret` | Private objective worth 1 VP |
+| `other` | Other scoring method (Custodians Token, Support for the Throne, etc.) |
+
+### Scoring Evaluator
+
+`engine.scoring.can_score_objective` evaluates whether a player meets an
+objective's condition:
+
+```python
+from engine.scoring import can_score_objective, score_points_available
+
+result = can_score_objective(
+    expand_borders,
+    state,
+    player_id="alice",
+    planet_registry={"mecatol_rex": mecatol_rex, ...},
+)
+# True  → condition met
+# False → condition not met
+# None  → cannot evaluate from current state (fleet positions, spend tracking)
+```
+
+`score_points_available` sums VP across a list of unscored objectives:
+
+```python
+total_vp = score_points_available(
+    state, "alice", [expand_borders, diversify_research, ...],
+    planet_registry=planet_registry,
+    tech_registry=tech_registry,
+)
+```
+
+### Condition Types
+
+| Condition | Evaluable? | Notes |
+|---|---|---|
+| `own_n_techs_of_color` | ✅ Yes | Requires `tech_registry` |
+| `own_n_techs_in_n_colors` | ✅ Yes | Requires `tech_registry` |
+| `own_n_unit_upgrades` | ✅ Yes | Requires `tech_registry` |
+| `control_n_planets_of_same_trait` | ✅ Yes | Requires `planet_registry` |
+| `control_n_planets_with_tech_skip` | ✅ Yes | Requires `planet_registry` |
+| `control_n_planets_outside_home` | ✅ Yes | Requires `planet_registry`; home system from `state.extra["home_systems"][player_id]` |
+| `control_n_legendary_planets` | ✅ Yes | Requires `planet_registry` |
+| `control_mecatol_rex` | ✅ Yes | Checks `controlled_planets` for `"mecatol_rex"` |
+| `have_n_victory_points` | ✅ Yes | Checks `PlayerState.victory_points` |
+| `ships_in_n_systems_adjacent_mecatol` | ⚠️ `None` | Requires fleet position data |
+| `ships_in_n_opponent_home_systems` | ⚠️ `None` | Requires fleet position data |
+| `have_n_non_fighter_ships_in_1_system` | ⚠️ `None` | Requires fleet position data |
+| `have_n_non_fighter_ships_in_n_systems` | ⚠️ `None` | Requires fleet position data |
+| `have_ships_in_n_systems_without_planets` | ⚠️ `None` | Requires fleet position data |
+| `have_n_structures` | ⚠️ `None` | Requires fleet position data |
+| `have_n_mechs` | ⚠️ `None` | Requires fleet position data |
+| `have_n_dreadnoughts` | ⚠️ `None` | Requires fleet position data |
+| `spend_n_resources` | ⚠️ `None` | Requires round-action tracking |
+| `spend_n_influence` | ⚠️ `None` | Requires round-action tracking |
+| `spend_n_trade_goods` | ⚠️ `None` | Requires round-action tracking |
+| `spend_n_command_tokens` | ⚠️ `None` | Requires round-action tracking |
+| `player_declared` | ⚠️ `None` | Must be confirmed by the player manually |
+
+### Registering Objectives
+
+Objectives are first-class components and can be stored in the
+`ComponentRegistry` alongside technologies, planets, and other components:
+
+```python
+from registry import ComponentRegistry
+
+reg = ComponentRegistry()
+reg.register_objective(expand_borders)
+reg.register_objective(diversify_research)
+
+# Retrieve by ID
+obj = reg.get("expand_borders")
+
+# Get all registered objectives
+all_objectives = reg.get_by_type(Objective)
+```
+
+
 ### Phase 1 – Foundation & Schema ✅
 - [x] Pydantic V2 models: `Faction`, `Unit`, `Technology`, `StrategyCard`, `ActionCard`, `Planet`
 - [x] `GameState` root object with full JSON round-trip support
@@ -373,3 +496,12 @@ result_boosted = simulate_combat(
 - [x] `engine.movement.get_fleet_move` – effective movement value for a fleet (minimum move of all non-transported ships, +Gravity Drive bonus)
 - [x] `engine.movement.get_reachable_systems` – BFS over the galaxy map returning all systems reachable in one tactical action, respecting anomaly rules (supernova impassable, nebula/asteroid must-stop, gravity rift +1 bonus) and enemy-ship blocking
 - [x] `engine.combat.simulate_combat` – Monte Carlo space-combat simulation returning win probabilities and expected survivor counts for any two opposing fleets
+
+### Phase 7 – Scoring Methods ✅
+- [x] `models.objective` – `Objective`, `ObjectiveType`, `ScoringCondition`, `ScoringConditionType` models covering all TI4 scoring categories (Stage I/II public, secret, other)
+- [x] `engine.scoring.can_score_objective` – evaluates whether a player meets an objective's condition; returns `True`/`False`/`None` (permissive design)
+- [x] `engine.scoring.score_points_available` – sums VP across a list of objectives a player can provably score right now
+- [x] Technology conditions fully evaluated from `PlayerState.researched_technologies` (unit upgrades, tech color counts)
+- [x] Planet conditions fully evaluated from `PlayerState.controlled_planets` + planet registry (trait, tech skip, legendary, Mecatol Rex, outside home system)
+- [x] Fleet/board conditions and spend conditions return `None` with a clear contract for manual player confirmation
+- [x] `ComponentRegistry.register_objective` – objectives are first-class registered components
