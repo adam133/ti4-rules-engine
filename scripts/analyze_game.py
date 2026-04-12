@@ -91,9 +91,9 @@ def get_adjacent_positions(pos: str) -> list[str]:
 # Static tile catalog (sourced from AsyncTI4 bot systems/*.json)
 # ---------------------------------------------------------------------------
 # Each entry: tile_id → {"supernova", "asteroid", "nebula", "gravity_rift",
-#                         "scar", "wormholes": list[str]}
+#                         "wormholes": list[str]}
 # Movement rules:
-#   supernova / scar  : impassable (cannot be entered or moved through)
+#   supernova         : impassable (cannot be entered or moved through)
 #   asteroid          : impassable unless player has Antimass Deflectors ("amd")
 #   nebula            : can be entered as a *destination* but cannot be moved through
 #                       (remaining moves drop to 0 on arrival)
@@ -133,8 +133,9 @@ _TILE_CATALOG: dict[str, dict[str, Any]] = {
     "82a": {"wormholes": ["GAMMA"]},
     "82b": {"wormholes": ["BETA", "ALPHA", "GAMMA"]},
     # --- Entropic Scar / Scar tiles (Thunders Edge expansion) ---
-    "114": {"scar": True},
-    "116": {"scar": True},
+    # Note: Scars affect unit *abilities* in the system but do NOT block ship movement.
+    "114": {},
+    "116": {},
 }
 
 
@@ -280,7 +281,7 @@ def get_reachable_systems(
             if tile_type_map is not None:
                 info = tile_type_map.get(adj_pos, {})
                 # Supernova and Scar: completely impassable
-                if info.get("supernova") or info.get("scar"):
+                if info.get("supernova"):
                     continue
                 # Asteroid field: impassable without Antimass Deflectors
                 if info.get("asteroid") and not has_antimass_deflectors:
