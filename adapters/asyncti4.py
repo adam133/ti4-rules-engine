@@ -203,6 +203,13 @@ class AsyncTI4GameData(BaseModel):
             "'ccs', and 'anomaly' fields."
         ),
     )
+    tilePositions: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Map of tile positions to tile IDs, encoded as 'pos:tileId' strings "
+            "(e.g. '212:42').  Used to resolve anomaly subtypes and wormhole adjacency."
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -361,5 +368,11 @@ def from_asyncti4(data: dict[str, Any] | AsyncTI4GameData) -> GameState:
         extra={
             "player_colors": player_colors,
             "tile_unit_data": data.tileUnitData,
+            "tile_positions": {
+                pos: tile_id
+                for entry in data.tilePositions
+                if ":" in entry
+                for pos, tile_id in [entry.split(":", 1)]
+            },
         },
     )

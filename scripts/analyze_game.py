@@ -88,6 +88,97 @@ def get_adjacent_positions(pos: str) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
+# Static tile catalog (sourced from AsyncTI4 bot systems/*.json)
+# ---------------------------------------------------------------------------
+# Each entry: tile_id → {"supernova", "asteroid", "nebula", "gravity_rift",
+#                         "scar", "wormholes": list[str]}
+# Movement rules:
+#   supernova / scar  : impassable (cannot be entered or moved through)
+#   asteroid          : impassable unless player has Antimass Deflectors ("amd")
+#   nebula            : can be entered as a *destination* but cannot be moved through
+#                       (remaining moves drop to 0 on arrival)
+#   gravity_rift      : grants +1 movement when moving through or out of the rift
+#   wormholes         : tile is adjacent to all other tiles sharing the same wormhole type
+
+_TILE_CATALOG: dict[str, dict[str, Any]] = {
+    # --- Wormhole-only tiles (standard game) ---
+    "17":  {"wormholes": ["DELTA"]},
+    "25":  {"wormholes": ["BETA"]},
+    "26":  {"wormholes": ["ALPHA"]},
+    "39":  {"wormholes": ["ALPHA"]},
+    "40":  {"wormholes": ["BETA"]},
+    # --- Standard-game anomalies ---
+    "41":  {"gravity_rift": True},
+    "42":  {"nebula": True},
+    "43":  {"supernova": True},
+    "44":  {"asteroid": True},
+    "45":  {"asteroid": True},
+    "56":  {"nebula": True},
+    # --- PoK anomalies / wormholes ---
+    "51":  {"wormholes": ["DELTA"]},
+    "64":  {"wormholes": ["BETA"]},
+    "67":  {"gravity_rift": True},
+    "68":  {"nebula": True},
+    "79":  {"asteroid": True, "wormholes": ["ALPHA"]},
+    "80":  {"supernova": True},
+    "81":  {"supernova": True},
+    "92":  {"nebula": True},
+    "94":  {"wormholes": ["EPSILON"]},
+    "102": {"wormholes": ["ALPHA"]},
+    "113": {"gravity_rift": True, "wormholes": ["BETA"]},
+    "115": {"asteroid": True},
+    "117": {"asteroid": True, "gravity_rift": True},
+    "118": {"wormholes": ["EPSILON"]},
+    # --- Mallice / Nexus (Prophecy of Kings) ---
+    "82a": {"wormholes": ["GAMMA"]},
+    "82b": {"wormholes": ["BETA", "ALPHA", "GAMMA"]},
+    # --- Entropic Scar / Scar tiles (Thunders Edge expansion) ---
+    "114": {"scar": True},
+    "116": {"scar": True},
+}
+
+
+def _build_movement_context(
+    tile_positions: dict[str, str],
+) -> tuple[dict[str, dict[str, Any]], dict[str, frozenset[str]]]:
+    """Build a per-position tile type map and wormhole adjacency sets.
+
+    Parameters
+    ----------
+    tile_positions:
+        Mapping of board position (e.g. ``"212"``) to tile ID (e.g. ``"42"``).
+
+    Returns
+    -------
+    tile_type_map:
+        ``{pos: tile_info}`` where *tile_info* is the corresponding entry from
+        :data:`_TILE_CATALOG` (or an empty dict for uncatalogued tiles).
+    wormhole_adjacency:
+        ``{pos: frozenset[pos]}`` — positions mutually adjacent via matching
+        wormhole types.
+    """
+    tile_type_map: dict[str, dict[str, Any]] = {}
+    wormhole_groups: dict[str, list[str]] = {}  # wormhole_type → [positions]
+
+    for pos, tile_id in tile_positions.items():
+        info = _TILE_CATALOG.get(tile_id, {})
+        tile_type_map[pos] = info
+        for wh in info.get("wormholes", []):
+            wormhole_groups.setdefault(wh, []).append(pos)
+
+    # Build adjacency from matching wormhole groups
+    wormhole_adjacency: dict[str, set[str]] = {}
+    for positions in wormhole_groups.values():
+        if len(positions) >= 2:
+            for pos in positions:
+                for other in positions:
+                    if other != pos:
+                        wormhole_adjacency.setdefault(pos, set()).add(other)
+
+    return tile_type_map, {k: frozenset(v) for k, v in wormhole_adjacency.items()}
+
+
+# ---------------------------------------------------------------------------
 # Fleet movement BFS
 # ---------------------------------------------------------------------------
 
@@ -128,21 +219,33 @@ def get_reachable_systems(
     starting_pos: str,
     fleet_move: int,
     tile_unit_data: dict[str, Any],
-    color: str,
+    faction: str,
+    tile_type_map: dict[str, dict[str, Any]] | None = None,
+    wormhole_adjacency: dict[str, frozenset[str]] | None = None,
+    has_antimass_deflectors: bool = False,
 ) -> set[str]:
     """BFS from *starting_pos* returning all tile positions reachable by the fleet.
 
     Movement rules applied:
+
     * Each step costs 1 move.
-    * Anomaly tiles block entry entirely.
-    * Tiles already activated by *color* (i.e. the player's CC is present)
-      cannot be entered.
+    * Tiles already activated by *faction* (player's CC present) cannot be entered.
+    * When *tile_type_map* is provided, per-anomaly rules are enforced:
+
+      * **Supernova / Scar**: impassable — cannot be entered or transited.
+      * **Asteroid field**: impassable unless *has_antimass_deflectors* is ``True``.
+      * **Nebula**: the fleet can enter as a destination but cannot move further
+        from there (remaining moves set to 0 on arrival).
+      * **Gravity Rift**: grants +1 movement when moving through or out of the
+        rift (arriving at a gravity rift does not consume a move).
+
+    * When *wormhole_adjacency* is provided, tiles sharing a wormhole type are
+      treated as mutually adjacent in addition to hex-grid neighbours.
+    * Without *tile_type_map*, the legacy ``anomaly: bool`` field from
+      *tile_unit_data* is used and all anomalies are treated as impassable.
     * The starting position itself is not included in the result.
     * Only positions present in *tile_unit_data* are considered (tiles off the
       map are ignored).
-
-    Note: wormhole connections are not modelled here as the AsyncTI4 export
-    does not include adjacency overrides for wormholes.
     """
     if fleet_move <= 0:
         return set()
@@ -156,15 +259,46 @@ def get_reachable_systems(
         pos, remaining = queue.popleft()
         if remaining <= 0:
             continue
-        for adj_pos in get_adjacent_positions(pos):
+
+        # Neighbours via hex-grid adjacency + wormhole connections
+        neighbours = list(get_adjacent_positions(pos))
+        if wormhole_adjacency:
+            for wh_pos in wormhole_adjacency.get(pos, frozenset()):
+                if wh_pos not in neighbours:
+                    neighbours.append(wh_pos)
+
+        for adj_pos in neighbours:
             if adj_pos not in tile_unit_data:
                 continue
             tile_data = tile_unit_data[adj_pos]
-            if tile_data.get("anomaly", False):
+
+            # Cannot enter a tile the player has already activated
+            if faction in tile_data.get("ccs", []):
                 continue
-            if color in tile_data.get("ccs", []):
-                continue
-            new_remaining = remaining - 1
+
+            # Determine movement cost and reachability for this tile
+            if tile_type_map is not None:
+                info = tile_type_map.get(adj_pos, {})
+                # Supernova and Scar: completely impassable
+                if info.get("supernova") or info.get("scar"):
+                    continue
+                # Asteroid field: impassable without Antimass Deflectors
+                if info.get("asteroid") and not has_antimass_deflectors:
+                    continue
+                # Gravity Rift: moving into/through costs 0 net move (+1 bonus)
+                if info.get("gravity_rift"):
+                    new_remaining = remaining  # remaining - 1 + 1 = remaining
+                # Nebula: can enter, but cannot move further from there
+                elif info.get("nebula"):
+                    new_remaining = 0
+                else:
+                    new_remaining = remaining - 1
+            else:
+                # Legacy fallback: treat all anomaly tiles as impassable
+                if tile_data.get("anomaly", False):
+                    continue
+                new_remaining = remaining - 1
+
             if best_remaining.get(adj_pos, -1) < new_remaining:
                 best_remaining[adj_pos] = new_remaining
                 reachable.add(adj_pos)
@@ -201,6 +335,15 @@ def _get_tactical_reach(
     # tileUnitData uses the faction name (e.g. "jolnar") as the per-player key
     faction = player.faction_id
 
+    # Build per-position tile type info and wormhole adjacency when available
+    tile_positions: dict[str, str] = state.extra.get("tile_positions", {})
+    tile_type_map: dict[str, dict[str, Any]] | None = None
+    wormhole_adjacency: dict[str, frozenset[str]] | None = None
+    if tile_positions:
+        tile_type_map, wormhole_adjacency = _build_movement_context(tile_positions)
+
+    has_amd = "amd" in (player.researched_technologies or [])
+
     reachable: dict[str, list[str]] = {}
     special_positions: list[str] = []
 
@@ -222,7 +365,15 @@ def _get_tactical_reach(
         except ValueError:
             special_positions.append(tile_pos)
             continue
-        for dest in get_reachable_systems(tile_pos, fleet_move, tile_unit_data, faction):
+        for dest in get_reachable_systems(
+            tile_pos,
+            fleet_move,
+            tile_unit_data,
+            faction,
+            tile_type_map=tile_type_map,
+            wormhole_adjacency=wormhole_adjacency,
+            has_antimass_deflectors=has_amd,
+        ):
             if dest not in reachable:
                 planets = list((tile_unit_data.get(dest) or {}).get("planets", {}).keys())
                 reachable[dest] = planets
