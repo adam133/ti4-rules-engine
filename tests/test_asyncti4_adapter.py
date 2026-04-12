@@ -324,3 +324,42 @@ class TestAsyncTI4GameDataSchema:
         assert p.eliminated is False
         assert p.isSpeaker is False
         assert p.active is False
+
+    def test_laws_in_play_as_string_ids(self) -> None:
+        # Original format: plain string IDs
+        data = {**SAMPLE_DATA, "lawsInPlay": ["shard_of_the_throne", "minister_policy"]}
+        parsed = AsyncTI4GameData.model_validate(data)
+        assert parsed.lawsInPlay == ["shard_of_the_throne", "minister_policy"]
+
+    def test_laws_in_play_as_dicts(self) -> None:
+        # Newer AsyncTI4 export format: full law objects
+        law_objects = [
+            {
+                "controlTokens": [],
+                "displaysElectedFaction": True,
+                "electedFaction": "naaz",
+                "id": "minister_policy",
+                "name": "Minister of Policy",
+                "type": "Law",
+                "uniqueId": 481,
+            },
+            {
+                "controlTokens": [],
+                "id": "minister_sciences",
+                "name": "Minister of Sciences",
+                "type": "Law",
+                "uniqueId": 659,
+            },
+        ]
+        data = {**SAMPLE_DATA, "lawsInPlay": law_objects}
+        parsed = AsyncTI4GameData.model_validate(data)
+        assert parsed.lawsInPlay == ["minister_policy", "minister_sciences"]
+
+    def test_laws_in_play_as_dicts_round_trips_through_from_asyncti4(self) -> None:
+        # Ensure from_asyncti4 correctly populates law_ids from dict-format lawsInPlay
+        law_objects = [
+            {"id": "minister_policy", "type": "Law", "uniqueId": 481, "controlTokens": []},
+        ]
+        data = {**SAMPLE_DATA, "lawsInPlay": law_objects}
+        state = from_asyncti4(data)
+        assert state.law_ids == ["minister_policy"]
