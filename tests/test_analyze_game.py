@@ -549,3 +549,213 @@ class TestGetPlanetRI:
         ri = _get_planet_ri(tile_unit_data)
         assert ri["p1"]["resources"] == 2
         assert ri["p2"]["influence"] == 3
+
+
+# ---------------------------------------------------------------------------
+# Creuss wormhole adjacency (_build_movement_context with creuss_in_game=True)
+# ---------------------------------------------------------------------------
+
+
+class TestCreussWormholeAdjacency:
+    """Creuss faction ability merges ALPHA and BETA wormhole adjacency groups."""
+
+    _ALL_POSITIONS = (
+        ["000"]
+        + [f"10{i}" for i in range(1, 7)]
+        + [f"2{i:02d}" for i in range(1, 13)]
+    )
+
+    def _tile_positions(self, overrides: dict[str, str]) -> dict[str, str]:
+        base = {pos: "1" for pos in self._ALL_POSITIONS}
+        base.update(overrides)
+        return base
+
+    def test_alpha_adjacent_to_beta_with_creuss(self) -> None:
+        tile_positions = self._tile_positions({
+            "101": "26",  # ALPHA
+            "201": "25",  # BETA
+        })
+        _, wha = _build_movement_context(tile_positions, creuss_in_game=True)
+        assert "201" in wha.get("101", frozenset()), (
+            "With Creuss in game, ALPHA tile should be adjacent to BETA tile"
+        )
+        assert "101" in wha.get("201", frozenset()), (
+            "With Creuss in game, BETA tile should be adjacent to ALPHA tile"
+        )
+
+    def test_alpha_not_adjacent_to_beta_without_creuss(self) -> None:
+        tile_positions = self._tile_positions({
+            "101": "26",  # ALPHA
+            "201": "25",  # BETA
+        })
+        _, wha = _build_movement_context(tile_positions, creuss_in_game=False)
+        assert "201" not in wha.get("101", frozenset()), (
+            "Without Creuss, ALPHA and BETA tiles should not be adjacent"
+        )
+
+    def test_alpha_still_adjacent_to_alpha_with_creuss(self) -> None:
+        tile_positions = self._tile_positions({
+            "101": "26",  # ALPHA
+            "201": "39",  # ALPHA
+        })
+        _, wha = _build_movement_context(tile_positions, creuss_in_game=True)
+        assert "201" in wha.get("101", frozenset()), (
+            "Two ALPHA tiles should still be adjacent to each other with Creuss"
+        )
+
+    def test_beta_adjacent_to_beta_with_creuss(self) -> None:
+        tile_positions = self._tile_positions({
+            "101": "25",  # BETA
+            "201": "40",  # BETA
+        })
+        _, wha = _build_movement_context(tile_positions, creuss_in_game=True)
+        assert "201" in wha.get("101", frozenset()), (
+            "Two BETA tiles should still be adjacent to each other with Creuss"
+        )
+
+    def test_creuss_reachability_via_cross_wormhole(self) -> None:
+        """Fleet moves from ALPHA tile to BETA tile when Creuss is in the game."""
+        _OPEN_MAP = {pos: _make_tile_data() for pos in self._ALL_POSITIONS}
+        tile_positions = self._tile_positions({
+            "101": "26",  # ALPHA (starting pos)
+            "201": "25",  # BETA (destination)
+        })
+        _, wha = _build_movement_context(tile_positions, creuss_in_game=True)
+        result = get_reachable_systems(
+            "101", 1, _OPEN_MAP, "red",
+            wormhole_adjacency=wha,
+        )
+        assert "201" in result, "Fleet should reach BETA tile from ALPHA tile via Creuss ability"
+
+
+# ---------------------------------------------------------------------------
+# Objective data loading and formatting
+# ---------------------------------------------------------------------------
+
+
+class TestObjectiveData:
+    def test_fetch_objective_data_returns_dict(self) -> None:
+        from scripts.analyze_game import fetch_objective_data
+        data = fetch_objective_data()
+        assert isinstance(data, dict)
+
+    def test_expand_borders_in_data(self) -> None:
+        from scripts.analyze_game import fetch_objective_data
+        data = fetch_objective_data()
+        assert "expand_borders" in data
+        assert data["expand_borders"]["name"] == "Expand Borders"
+        assert data["expand_borders"]["type"] == "stage_1"
+        assert data["expand_borders"]["points"] == 1
+
+    def test_command_an_armada_stage_2(self) -> None:
+        from scripts.analyze_game import fetch_objective_data
+        data = fetch_objective_data()
+        assert "command_an_armada" in data
+        assert data["command_an_armada"]["type"] == "stage_2"
+        assert data["command_an_armada"]["points"] == 2
+
+    def test_format_objective_known_id(self) -> None:
+        from scripts.analyze_game import _format_objective, fetch_objective_data
+        data = fetch_objective_data()
+        result = _format_objective("expand_borders", data)
+        assert "Expand Borders" in result
+        assert "1VP" in result
+        assert "6 planets" in result
+
+    def test_format_objective_unknown_id(self) -> None:
+        from scripts.analyze_game import _format_objective
+        result = _format_objective("some_unknown_objective", {})
+        assert result == "some_unknown_objective"
+
+
+# ---------------------------------------------------------------------------
+# Leader formatting helpers
+# ---------------------------------------------------------------------------
+
+
+class TestLeaderHelpers:
+    def test_leader_type_from_explicit_field(self) -> None:
+        from scripts.analyze_game import _get_leader_type
+        assert _get_leader_type({"id": "x", "type": "agent"}) == "agent"
+        assert _get_leader_type({"id": "x", "type": "commander"}) == "commander"
+        assert _get_leader_type({"id": "x", "type": "hero"}) == "hero"
+
+    def test_leader_type_inferred_from_id_suffix(self) -> None:
+        from scripts.analyze_game import _get_leader_type
+        assert _get_leader_type({"id": "jolnar_agent"}) == "agent"
+        assert _get_leader_type({"id": "jolnar_commander"}) == "commander"
+        assert _get_leader_type({"id": "jolnar_hero"}) == "hero"
+
+    def test_leader_type_unknown(self) -> None:
+        from scripts.analyze_game import _get_leader_type
+        assert _get_leader_type({"id": "jolnar_x"}) == "leader"
+
+
+# ---------------------------------------------------------------------------
+# AsyncTI4 adapter – leaders and public objectives parsing
+# ---------------------------------------------------------------------------
+
+
+class TestAsyncTI4AdapterNewFields:
+    _BASE_DATA: dict = {
+        "gameName": "test",
+        "gameRound": 1,
+        "publicObjectives": ["expand_borders", "diversify_research"],
+        "playerData": [
+            {
+                "userName": "alice",
+                "faction": "jolnar",
+                "totalVps": 2,
+                "scs": [],
+                "passed": False,
+                "tg": 0,
+                "commodities": 0,
+                "planets": ["jol"],
+                "exhaustedPlanets": [],
+                "techs": [],
+                "secretsScored": {},
+                "scoredPublicObjectives": ["expand_borders"],
+                "isSpeaker": True,
+                "active": False,
+                "acCount": 0,
+                "eliminated": False,
+                "leaders": [
+                    {"id": "jolnar_agent", "exhausted": False, "locked": False, "type": "agent"},
+                    {"id": "jolnar_commander", "exhausted": False, "locked": True, "type": "commander"},
+                ],
+            }
+        ],
+        "strategyCards": [],
+    }
+
+    def test_public_objectives_in_state(self) -> None:
+        from adapters.asyncti4 import from_asyncti4
+        state = from_asyncti4(self._BASE_DATA)
+        assert "expand_borders" in state.public_objectives
+        assert "diversify_research" in state.public_objectives
+
+    def test_scored_public_objectives_merged_into_scored(self) -> None:
+        from adapters.asyncti4 import from_asyncti4
+        state = from_asyncti4(self._BASE_DATA)
+        assert "expand_borders" in state.players["alice"].scored_objectives
+
+    def test_leaders_stored_in_extra(self) -> None:
+        from adapters.asyncti4 import from_asyncti4
+        state = from_asyncti4(self._BASE_DATA)
+        player_leaders = state.extra.get("player_leaders", {})
+        assert "alice" in player_leaders
+        leaders = player_leaders["alice"]
+        assert len(leaders) == 2
+        leader_ids = [l["id"] for l in leaders]
+        assert "jolnar_agent" in leader_ids
+
+    def test_no_leaders_no_entry_in_extra(self) -> None:
+        from adapters.asyncti4 import from_asyncti4
+        data = dict(self._BASE_DATA)
+        player = dict(data["playerData"][0])
+        player["leaders"] = []
+        data = dict(data, playerData=[player])
+        state = from_asyncti4(data)
+        player_leaders = state.extra.get("player_leaders", {})
+        assert "alice" not in player_leaders
+

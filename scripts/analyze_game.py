@@ -28,9 +28,10 @@ S3_URL_TEMPLATE = (
     "https://s3.us-east-1.amazonaws.com/asyncti4.com/webdata/{game}/{game}.json"
 )
 
-# Path to the bundled technology data file (data/technologies.json at repo root).
+# Path to the bundled data files (data/ at repo root).
 _DATA_DIR = pathlib.Path(__file__).parent.parent / "data"
 _TECH_DATA_FILE = _DATA_DIR / "technologies.json"
+_OBJECTIVES_DATA_FILE = _DATA_DIR / "objectives.json"
 
 # ---------------------------------------------------------------------------
 # Hex-grid adjacency
@@ -147,6 +148,8 @@ _TILE_CATALOG: dict[str, dict[str, Any]] = {
 
 def _build_movement_context(
     tile_positions: dict[str, str],
+    *,
+    creuss_in_game: bool = False,
 ) -> tuple[dict[str, dict[str, Any]], dict[str, frozenset[str]]]:
     """Build a per-position tile type map and wormhole adjacency sets.
 
@@ -154,6 +157,11 @@ def _build_movement_context(
     ----------
     tile_positions:
         Mapping of board position (e.g. ``"212"``) to tile ID (e.g. ``"42"``).
+    creuss_in_game:
+        When ``True``, applies the Ghosts of Creuss faction ability
+        *Quantum Entanglement*: all α (ALPHA) and β (BETA) wormhole systems
+        are adjacent to each other, merging them into a single adjacency group.
+        This affects movement for **all** players, not just the Creuss player.
 
     Returns
     -------
@@ -173,6 +181,15 @@ def _build_movement_context(
         for wh in info.get("wormholes", []):
             wormhole_groups.setdefault(wh, []).append(pos)
 
+    # Ghosts of Creuss ability: merge ALPHA and BETA wormhole groups so that
+    # every alpha system is adjacent to every beta system and vice versa.
+    if creuss_in_game:
+        alpha_positions = wormhole_groups.pop("ALPHA", [])
+        beta_positions = wormhole_groups.pop("BETA", [])
+        merged = alpha_positions + beta_positions
+        if merged:
+            wormhole_groups["ALPHA_BETA_MERGED"] = merged
+
     # Build adjacency from matching wormhole groups
     wormhole_adjacency: dict[str, set[str]] = {}
     for positions in wormhole_groups.values():
@@ -181,7 +198,6 @@ def _build_movement_context(
                 for other in positions:
                     if other != pos:
                         wormhole_adjacency.setdefault(pos, set()).add(other)
-
 
     return tile_type_map, {k: frozenset(v) for k, v in wormhole_adjacency.items()}
 
@@ -220,6 +236,80 @@ def _load_tech_names_cached() -> dict[str, str]:
             "showing raw tech aliases.",
             file=sys.stderr,
         )
+        return {}
+
+
+def fetch_objective_data() -> dict[str, dict[str, Any]]:
+    """Load full objective data from the bundled data file.
+
+    Returns a dict mapping objective ID (e.g. ``"expand_borders"``) to the full
+    objective record ``{"id", "name", "type", "points", "description"}``.
+    Ported from the AsyncTI4 bot and stored in ``data/objectives.json``.
+    Falls back to an empty dict if the file cannot be read.
+    Results are cached after the first call.
+    """
+    return _load_objective_data_cached()
+
+
+@functools.cache
+def _load_objective_data_cached() -> dict[str, dict[str, Any]]:
+    """Cached implementation of :func:`fetch_objective_data`."""
+    try:
+        with _OBJECTIVES_DATA_FILE.open(encoding="utf-8") as fh:
+            objectives: list[dict[str, Any]] = json.load(fh)
+        return {
+            obj["id"]: obj
+            for obj in objectives
+            if isinstance(obj, dict) and "id" in obj
+        }
+    except (OSError, json.JSONDecodeError, KeyError, TypeError) as exc:
+        print(
+            f"Warning: could not load objective data from {_OBJECTIVES_DATA_FILE} ({exc!r}); "
+            "showing raw objective IDs.",
+            file=sys.stderr,
+        )
+        return {}
+
+
+def _format_objective(obj_id: str, obj_data: dict[str, dict[str, Any]]) -> str:
+    """Return a display string for an objective, using full name and description if available."""
+    if obj_id not in obj_data:
+        return obj_id
+    rec = obj_data[obj_id]
+    name = rec.get("name", obj_id)
+    desc = rec.get("description", "")
+    pts = rec.get("points", "")
+    pt_str = f" [{pts}VP]" if pts else ""
+    if desc:
+        return f"{name}{pt_str} — {desc}"
+    return f"{name}{pt_str}"
+
+
+def fetch_action_tech_names() -> dict[str, str]:
+    """Return alias→name for technologies that have an ACTION-timing ability.
+
+    Parses ``data/technologies.json`` and returns entries whose ``text`` field
+    contains ``"ACTION:"`` (case-sensitive), indicating the technology can be
+    used as a component action.
+    """
+    return _load_action_tech_names_cached()
+
+
+@functools.cache
+def _load_action_tech_names_cached() -> dict[str, str]:
+    """Cached implementation of :func:`fetch_action_tech_names`."""
+    try:
+        with _TECH_DATA_FILE.open(encoding="utf-8") as fh:
+            techs: list[dict[str, Any]] = json.load(fh)
+        return {
+            t["alias"]: t["name"]
+            for t in techs
+            if isinstance(t, dict)
+            and "alias" in t
+            and "name" in t
+            and "ACTION:" in t.get("text", "")
+        }
+    except (OSError, json.JSONDecodeError, KeyError, TypeError):
         return {}
 
 
@@ -504,7 +594,14 @@ def _get_tactical_reach(
     tile_type_map: dict[str, dict[str, Any]] | None = None
     wormhole_adjacency: dict[str, frozenset[str]] | None = None
     if tile_positions:
-        tile_type_map, wormhole_adjacency = _build_movement_context(tile_positions)
+        # Detect if the Ghosts of Creuss are playing — their faction ability
+        # (Quantum Entanglement) makes all alpha and beta wormholes adjacent.
+        creuss_in_game = any(
+            p.faction_id == "ghost" for p in state.players.values()
+        )
+        tile_type_map, wormhole_adjacency = _build_movement_context(
+            tile_positions, creuss_in_game=creuss_in_game
+        )
 
     has_amd = "amd" in (player.researched_technologies or [])
 
@@ -625,6 +722,8 @@ def fetch_game_json(game_number: str) -> dict:
 
 def print_game_summary(state: GameState) -> None:
     """Print a human-readable summary of the game state."""
+    obj_data = fetch_objective_data()
+
     print()
     print("=" * 60)
     print(f"  Game:   {state.game_id}")
@@ -635,7 +734,52 @@ def print_game_summary(state: GameState) -> None:
     print(f"  Speaker: {state.turn_order.speaker_id}")
     if state.law_ids:
         print(f"  Laws in play: {', '.join(state.law_ids)}")
+
+    # --- Revealed public objectives ---
+    if state.public_objectives:
+        print()
+        print("  PUBLIC OBJECTIVES (revealed):")
+        for obj_id in state.public_objectives:
+            rec = obj_data.get(obj_id)
+            if rec:
+                stage = "Stage I" if rec.get("type") == "stage_1" else "Stage II"
+                pts = rec.get("points", "?")
+                name = rec.get("name", obj_id)
+                desc = rec.get("description", "")
+                print(f"    [{stage}, {pts}VP] {name}")
+                if desc:
+                    print(f"      {desc}")
+            else:
+                print(f"    {obj_id}")
+
     print("=" * 60)
+
+
+def _get_leader_type(leader: dict[str, Any]) -> str:
+    """Infer leader type (agent/commander/hero) from the leader dict."""
+    if "type" in leader:
+        return str(leader["type"]).lower()
+    # Fall back to inferring from the ID suffix
+    lid = str(leader.get("id", "")).lower()
+    for suffix in ("agent", "commander", "hero"):
+        if lid.endswith(suffix):
+            return suffix
+    return "leader"
+
+
+def _format_leader(leader: dict[str, Any]) -> str:
+    """Return a display string for a leader card with status indicators."""
+    lid = str(leader.get("id", "unknown"))
+    ltype = _get_leader_type(leader).capitalize()
+    exhausted = leader.get("exhausted", False)
+    locked = leader.get("locked", False)
+    if locked:
+        status = "LOCKED"
+    elif exhausted:
+        status = "exhausted"
+    else:
+        status = "READY"
+    return f"{lid} ({ltype}) [{status}]"
 
 
 def print_player_summary(state: GameState, player_options_map: dict) -> None:
@@ -643,8 +787,11 @@ def print_player_summary(state: GameState, player_options_map: dict) -> None:
     from engine.options import PlayerAction
 
     tech_names = fetch_tech_names()
+    action_techs = fetch_action_tech_names()
+    obj_data = fetch_objective_data()
     tile_unit_data: dict[str, Any] = state.extra.get("tile_unit_data", {})
     planet_ri = _get_planet_ri(tile_unit_data)
+    player_leaders: dict[str, list[dict[str, Any]]] = state.extra.get("player_leaders", {})
 
     print()
     print("  PLAYERS")
@@ -704,8 +851,42 @@ def print_player_summary(state: GameState, player_options_map: dict) -> None:
 
         if player.strategy_card_ids:
             print(f"    Strat cards: {', '.join(player.strategy_card_ids)}")
+
+        # --- Scored objectives (full names + descriptions) ---
         if player.scored_objectives:
-            print(f"    Scored:   {', '.join(player.scored_objectives)}")
+            print("    Scored objectives:")
+            for obj_id in player.scored_objectives:
+                print(f"      • {_format_objective(obj_id, obj_data)}")
+
+        # --- Unscored public objectives + eligibility ---
+        if state.public_objectives:
+            scored_set = set(player.scored_objectives)
+            unscored_public = [
+                oid for oid in state.public_objectives if oid not in scored_set
+            ]
+            if unscored_public:
+                print("    Unscored public objectives:")
+                for obj_id in unscored_public:
+                    obj_str = _format_objective(obj_id, obj_data)
+                    print(f"      ○ {obj_str}")
+
+        # --- Leaders (agents, commanders, heroes) ---
+        leaders = player_leaders.get(player_id, [])
+        if leaders:
+            print("    Leaders:")
+            for leader in leaders:
+                ltype = _get_leader_type(leader)
+                exhausted_flag = leader.get("exhausted", False)
+                locked_flag = leader.get("locked", False)
+                lid = str(leader.get("id", "unknown"))
+                ltype_cap = ltype.capitalize()
+                if locked_flag:
+                    status = "LOCKED"
+                elif exhausted_flag:
+                    status = "exhausted"
+                else:
+                    status = "READY"
+                print(f"      {lid} ({ltype_cap}): {status}")
 
         if opts:
             actions = [a.value for a in opts.available_actions]
@@ -713,6 +894,33 @@ def print_player_summary(state: GameState, player_options_map: dict) -> None:
                 print(f"    Available actions: {', '.join(actions)}")
             else:
                 print("    Available actions: (none)")
+
+            # --- Public component actions detail ---
+            if PlayerAction.COMPONENT_ACTION in opts.available_actions:
+                component_sources: list[str] = []
+
+                # Technologies with ACTION timing
+                action_tech_ids = [
+                    t for t in (player.researched_technologies or [])
+                    if t in action_techs
+                ]
+                for t in action_tech_ids:
+                    component_sources.append(f"tech: {action_techs[t]}")
+
+                # Readied (not exhausted, not locked) agents
+                for leader in leaders:
+                    if _get_leader_type(leader) == "agent":
+                        if not leader.get("exhausted", False) and not leader.get("locked", False):
+                            component_sources.append(
+                                f"agent: {leader.get('id', 'unknown')} (readied)"
+                            )
+
+                if component_sources:
+                    print("    Public component actions:")
+                    for src in component_sources:
+                        print(f"      • {src}")
+                else:
+                    print("    Public component actions: (action cards not shown)")
 
             if PlayerAction.TACTICAL_ACTION in opts.available_actions:
                 reach = _get_tactical_reach(player_id, state)

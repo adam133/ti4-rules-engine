@@ -129,6 +129,18 @@ class AsyncTI4Player(BaseModel):
         ge=0,
         description="Number of command tokens in the player's strategy zone.",
     )
+    leaders: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description=(
+            "Leader cards (agents, commanders, heroes) held by this player. "
+            "Each entry is a dict with at minimum 'id' and optionally 'exhausted', "
+            "'locked', and 'type' fields."
+        ),
+    )
+    scoredPublicObjectives: list[str] = Field(
+        default_factory=list,
+        description="IDs of public objectives this player has scored.",
+    )
 
 
 class AsyncTI4StrategyCard(BaseModel):
@@ -209,6 +221,10 @@ class AsyncTI4GameData(BaseModel):
             "Map of tile positions to tile IDs, encoded as 'pos:tileId' strings "
             "(e.g. '212:42').  Used to resolve anomaly subtypes and wormhole adjacency."
         ),
+    )
+    publicObjectives: list[str] = Field(
+        default_factory=list,
+        description="IDs of public objective cards that have been revealed during the game.",
     )
 
 
@@ -317,11 +333,14 @@ def from_asyncti4(data: dict[str, Any] | AsyncTI4GameData) -> GameState:
     # the Dicecord service account (faction == "neutral").
     players: dict[str, PlayerState] = {}
     player_colors: dict[str, str] = {}
+    player_leaders: dict[str, list[dict[str, Any]]] = {}
     for p in data.playerData:
         if p.eliminated:
             continue
         if p.faction == "neutral":
             continue
+        # Combine scored secrets and scored public objectives into one list
+        scored = list(p.secretsScored.keys()) + list(p.scoredPublicObjectives)
         players[p.userName] = PlayerState(
             player_id=p.userName,
             faction_id=p.faction,
@@ -338,14 +357,16 @@ def from_asyncti4(data: dict[str, Any] | AsyncTI4GameData) -> GameState:
             researched_technologies=p.techs,
             # Promissory notes in hand are private in AsyncTI4 exports
             promissory_notes=[],
-            # secretsScored is a dict; keys are the scored secret objective IDs
-            scored_objectives=list(p.secretsScored.keys()),
+            # secretsScored keys + scoredPublicObjectives
+            scored_objectives=scored,
             tactical_tokens=p.tacticalCC,
             fleet_tokens=p.fleetCC,
             strategy_tokens=p.strategicCC,
         )
         if p.color:
             player_colors[p.userName] = p.color
+        if p.leaders:
+            player_leaders[p.userName] = p.leaders
 
     player_ids = list(players.keys())
 
@@ -365,8 +386,10 @@ def from_asyncti4(data: dict[str, Any] | AsyncTI4GameData) -> GameState:
         players=players,
         active_player_id=active_player_id,
         law_ids=data.lawsInPlay,
+        public_objectives=data.publicObjectives,
         extra={
             "player_colors": player_colors,
+            "player_leaders": player_leaders,
             "tile_unit_data": data.tileUnitData,
             "tile_positions": {
                 pos: tile_id

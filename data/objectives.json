@@ -1,0 +1,485 @@
+[
+  {
+    "id": "corner_the_market",
+    "name": "Corner the Market",
+    "type": "stage_1",
+    "points": 1,
+    "description": "Control 4 planets that each have the same planet trait."
+  },
+  {
+    "id": "develop_weaponry",
+    "name": "Develop Weaponry",
+    "type": "stage_1",
+    "points": 1,
+    "description": "Own 2 unit upgrade technologies."
+  },
+  {
+    "id": "diversify_research",
+    "name": "Diversify Research",
+    "type": "stage_1",
+    "points": 1,
+    "description": "Own 2 technologies in each of 2 different colors."
+  },
+  {
+    "id": "erect_a_monument",
+    "name": "Erect a Monument",
+    "type": "stage_1",
+    "points": 1,
+    "description": "Spend 8 resources."
+  },
+  {
+    "id": "establish_a_perimeter",
+    "name": "Establish a Perimeter",
+    "type": "stage_1",
+    "points": 1,
+    "description": "Have 4 or more PDS units on the game board."
+  },
+  {
+    "id": "expand_borders",
+    "name": "Expand Borders",
+    "type": "stage_1",
+    "points": 1,
+    "description": "Control 6 planets outside of your home system."
+  },
+  {
+    "id": "found_research_outposts",
+    "name": "Found Research Outposts",
+    "type": "stage_1",
+    "points": 1,
+    "description": "Control 3 planets that have technology specialties."
+  },
+  {
+    "id": "intimidate_council",
+    "name": "Intimidate Council",
+    "type": "stage_1",
+    "points": 1,
+    "description": "Have 1 or more ships in 2 systems that are adjacent to Mecatol Rex's system."
+  },
+  {
+    "id": "lead_from_the_front",
+    "name": "Lead from the Front",
+    "type": "stage_1",
+    "points": 1,
+    "description": "Spend a total of 3 command tokens."
+  },
+  {
+    "id": "negotiate_trade_routes",
+    "name": "Negotiate Trade Routes",
+    "type": "stage_1",
+    "points": 1,
+    "description": "Spend 5 trade goods."
+  },
+  {
+    "id": "patrol_vast_territories",
+    "name": "Patrol Vast Territories",
+    "type": "stage_1",
+    "points": 1,
+    "description": "Have 1 or more ships in 5 systems that contain no planets."
+  },
+  {
+    "id": "populate_the_border",
+    "name": "Populate the Border",
+    "type": "stage_1",
+    "points": 1,
+    "description": "Have 9 or more ground forces on planets outside of your home system."
+  },
+  {
+    "id": "sway_the_council",
+    "name": "Sway the Council",
+    "type": "stage_1",
+    "points": 1,
+    "description": "Spend 8 influence."
+  },
+  {
+    "id": "conquer_the_weak",
+    "name": "Conquer the Weak",
+    "type": "stage_1",
+    "points": 1,
+    "description": "Control 1 planet that is in another player's home system."
+  },
+  {
+    "id": "manipulate_galactic_law",
+    "name": "Manipulate Galactic Law",
+    "type": "stage_1",
+    "points": 1,
+    "description": "Have 3 laws in play."
+  },
+  {
+    "id": "mine_rare_metals",
+    "name": "Mine Rare Metals",
+    "type": "stage_1",
+    "points": 1,
+    "description": "Control 4 hazardous planets outside of your home system."
+  },
+  {
+    "id": "occupy_the_seat_of_the_empire",
+    "name": "Occupy the Seat of the Empire",
+    "type": "stage_1",
+    "points": 1,
+    "description": "Control Mecatol Rex and have 3 or more ships in its system."
+  },
+  {
+    "id": "threaten_enemies",
+    "name": "Threaten Enemies",
+    "type": "stage_1",
+    "points": 1,
+    "description": "Have 1 or more ships in the home systems of 2 of your neighbors."
+  },
+  {
+    "id": "command_an_armada",
+    "name": "Command an Armada",
+    "type": "stage_2",
+    "points": 2,
+    "description": "Have 5 or more non-fighter ships in 1 system."
+  },
+  {
+    "id": "construct_massive_cities",
+    "name": "Construct Massive Cities",
+    "type": "stage_2",
+    "points": 2,
+    "description": "Have 7 or more structures on the game board."
+  },
+  {
+    "id": "control_the_borderlands",
+    "name": "Control the Borderlands",
+    "type": "stage_2",
+    "points": 2,
+    "description": "Have 1 or more ships in 5 systems that each contain a non-home planet."
+  },
+  {
+    "id": "cut_supply_lines",
+    "name": "Cut Supply Lines",
+    "type": "stage_2",
+    "points": 2,
+    "description": "Have 1 or more ships in the same system as 3 of your opponents' space docks."
+  },
+  {
+    "id": "dominate_the_sphere",
+    "name": "Dominate the Sphere",
+    "type": "stage_2",
+    "points": 2,
+    "description": "Control Mecatol Rex and have 3 or more ships in its system."
+  },
+  {
+    "id": "force_concessions",
+    "name": "Force Concessions",
+    "type": "stage_2",
+    "points": 2,
+    "description": "Control 4 planets that are in the home systems of other players."
+  },
+  {
+    "id": "form_galactic_brain_trust",
+    "name": "Form Galactic Brain Trust",
+    "type": "stage_2",
+    "points": 2,
+    "description": "Control 5 planets that have technology specialties."
+  },
+  {
+    "id": "found_a_golden_age",
+    "name": "Found a Golden Age",
+    "type": "stage_2",
+    "points": 2,
+    "description": "Spend 16 resources."
+  },
+  {
+    "id": "galvanize_the_people",
+    "name": "Galvanize the People",
+    "type": "stage_2",
+    "points": 2,
+    "description": "Spend 6 command tokens."
+  },
+  {
+    "id": "hoard_raw_materials",
+    "name": "Hoard Raw Materials",
+    "type": "stage_2",
+    "points": 2,
+    "description": "Spend 16 influence."
+  },
+  {
+    "id": "mechanize_the_military",
+    "name": "Mechanize the Military",
+    "type": "stage_2",
+    "points": 2,
+    "description": "Have 1 or more mechs on 4 planets outside of your home system."
+  },
+  {
+    "id": "police_the_borderlands",
+    "name": "Police the Borderlands",
+    "type": "stage_2",
+    "points": 2,
+    "description": "Control 8 planets outside of your home system."
+  },
+  {
+    "id": "protect_the_border",
+    "name": "Protect the Border",
+    "type": "stage_2",
+    "points": 2,
+    "description": "Have 5 or more structures on planets outside of your home system."
+  },
+  {
+    "id": "reclaim_ancient_monuments",
+    "name": "Reclaim Ancient Monuments",
+    "type": "stage_2",
+    "points": 2,
+    "description": "Control 3 legendary planets."
+  },
+  {
+    "id": "rule_distant_lands",
+    "name": "Rule Distant Lands",
+    "type": "stage_2",
+    "points": 2,
+    "description": "Control 2 planets that are each in or adjacent to a different player's home system."
+  },
+  {
+    "id": "subdue_the_galaxy",
+    "name": "Subdue the Galaxy",
+    "type": "stage_2",
+    "points": 2,
+    "description": "Have 1 or more dreadnoughts in 3 systems."
+  },
+  {
+    "id": "unify_the_colonies",
+    "name": "Unify the Colonies",
+    "type": "stage_2",
+    "points": 2,
+    "description": "Control 6 planets in systems that each contain a friendly space dock."
+  },
+  {
+    "id": "centralize_discoveries",
+    "name": "Centralize Discoveries",
+    "type": "stage_2",
+    "points": 2,
+    "description": "Control 4 legendary planets."
+  },
+  {
+    "id": "assert_empathy",
+    "name": "Assert Empathy",
+    "type": "secret",
+    "points": 1,
+    "description": "Have 10 or more influence on unexhausted planets you control."
+  },
+  {
+    "id": "become_a_martyr",
+    "name": "Become a Martyr",
+    "type": "secret",
+    "points": 1,
+    "description": "Lose control of a planet in a home system."
+  },
+  {
+    "id": "betray_a_friend",
+    "name": "Betray a Friend",
+    "type": "secret",
+    "points": 1,
+    "description": "Win a combat against a player you have a Promissory Note from."
+  },
+  {
+    "id": "brave_the_void",
+    "name": "Brave the Void",
+    "type": "secret",
+    "points": 1,
+    "description": "Win a combat in an anomaly."
+  },
+  {
+    "id": "darken_the_skies",
+    "name": "Darken the Skies",
+    "type": "secret",
+    "points": 1,
+    "description": "Win a combat in the home system of another player."
+  },
+  {
+    "id": "demonstrate_your_might",
+    "name": "Demonstrate Your Might",
+    "type": "secret",
+    "points": 1,
+    "description": "Have 1 or more dreadnoughts in the home system of another player."
+  },
+  {
+    "id": "defy_gravity",
+    "name": "Defy Gravity",
+    "type": "secret",
+    "points": 1,
+    "description": "Have 1 or more ships in a system that is not adjacent to a planet you control."
+  },
+  {
+    "id": "destroy_their_greatest_ship",
+    "name": "Destroy Their Greatest Ship",
+    "type": "secret",
+    "points": 1,
+    "description": "Destroy another player's war sun or flagship."
+  },
+  {
+    "id": "dictate_policy",
+    "name": "Dictate Policy",
+    "type": "secret",
+    "points": 1,
+    "description": "There are 3 or more laws in play."
+  },
+  {
+    "id": "drive_the_debate",
+    "name": "Drive the Debate",
+    "type": "secret",
+    "points": 1,
+    "description": "You are elected as the outcome of a political favor."
+  },
+  {
+    "id": "establish_hegemony",
+    "name": "Establish Hegemony",
+    "type": "secret",
+    "points": 1,
+    "description": "Control 3 planets that each have the same planet trait."
+  },
+  {
+    "id": "forge_an_alliance",
+    "name": "Forge an Alliance",
+    "type": "secret",
+    "points": 1,
+    "description": "Control 4 cultural planets."
+  },
+  {
+    "id": "fuel_the_war_machine",
+    "name": "Fuel the War Machine",
+    "type": "secret",
+    "points": 1,
+    "description": "Control 3 industrial planets."
+  },
+  {
+    "id": "gather_a_mighty_fleet",
+    "name": "Gather a Mighty Fleet",
+    "type": "secret",
+    "points": 1,
+    "description": "Have 5 or more dreadnoughts on the game board."
+  },
+  {
+    "id": "hold_vast_reserves",
+    "name": "Hold Vast Reserves",
+    "type": "secret",
+    "points": 1,
+    "description": "Control 3 industrial planets outside of your home system."
+  },
+  {
+    "id": "intimidate_the_council",
+    "name": "Intimidate the Council",
+    "type": "secret",
+    "points": 1,
+    "description": "Have 1 or more ships in 3 systems that are adjacent to Mecatol Rex's system."
+  },
+  {
+    "id": "make_an_example_of_their_world",
+    "name": "Make an Example of Their World",
+    "type": "secret",
+    "points": 1,
+    "description": "Use BOMBARDMENT to destroy the last ground force on a planet."
+  },
+  {
+    "id": "master_the_laws_of_physics",
+    "name": "Master the Laws of Physics",
+    "type": "secret",
+    "points": 1,
+    "description": "Own 4 technologies of the same color."
+  },
+  {
+    "id": "mine_rare_metals_secret",
+    "name": "Mine Rare Metals",
+    "type": "secret",
+    "points": 1,
+    "description": "Control 3 hazardous planets outside of your home system."
+  },
+  {
+    "id": "monopolize_production",
+    "name": "Monopolize Production",
+    "type": "secret",
+    "points": 1,
+    "description": "Control 4 industrial planets outside of your home system."
+  },
+  {
+    "id": "occupy_the_fringe",
+    "name": "Occupy the Fringe",
+    "type": "secret",
+    "points": 1,
+    "description": "Have 9 or more ground forces on a single planet outside of your home system."
+  },
+  {
+    "id": "own_the_borderlands",
+    "name": "Own the Borderlands",
+    "type": "secret",
+    "points": 1,
+    "description": "Control 5 planets outside of your home system that are each adjacent to another player's home system."
+  },
+  {
+    "id": "prove_endurance",
+    "name": "Prove Endurance",
+    "type": "secret",
+    "points": 1,
+    "description": "Be the last player to pass during the action phase."
+  },
+  {
+    "id": "seize_an_icon",
+    "name": "Seize an Icon",
+    "type": "secret",
+    "points": 1,
+    "description": "Control 3 legendary planets."
+  },
+  {
+    "id": "spark_a_rebellion",
+    "name": "Spark a Rebellion",
+    "type": "secret",
+    "points": 1,
+    "description": "Win a combat against the current first player."
+  },
+  {
+    "id": "spread_to_the_fringe",
+    "name": "Spread to the Fringe",
+    "type": "secret",
+    "points": 1,
+    "description": "Have 1 or more units on 11 planets outside of your home system."
+  },
+  {
+    "id": "stake_your_claim",
+    "name": "Stake Your Claim",
+    "type": "secret",
+    "points": 1,
+    "description": "Control 1 legendary planet."
+  },
+  {
+    "id": "strengthen_the_empire",
+    "name": "Strengthen the Empire",
+    "type": "secret",
+    "points": 1,
+    "description": "Control Mecatol Rex."
+  },
+  {
+    "id": "studies_begin",
+    "name": "Studies Begin",
+    "type": "secret",
+    "points": 1,
+    "description": "Own 3 technologies of the same color."
+  },
+  {
+    "id": "take_the_stage",
+    "name": "Take the Stage",
+    "type": "secret",
+    "points": 1,
+    "description": "Win a combat as the active player."
+  },
+  {
+    "id": "turn_their_fleets_to_dust",
+    "name": "Turn Their Fleets to Dust",
+    "type": "secret",
+    "points": 1,
+    "description": "Use SPACE CANNON to destroy the last of a player's ships in a system."
+  },
+  {
+    "id": "unveil_flagship",
+    "name": "Unveil Flagship",
+    "type": "secret",
+    "points": 1,
+    "description": "Win a space combat in a system that contains a planet controlled by another player using your flagship."
+  },
+  {
+    "id": "use_the_worm_holes",
+    "name": "Use the Wormholes",
+    "type": "secret",
+    "points": 1,
+    "description": "Move 1 or more ships through a wormhole during the same movement step."
+  }
+]
