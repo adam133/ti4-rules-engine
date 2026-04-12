@@ -25,7 +25,10 @@ from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
+from models.objective import Objective
+from models.planet import Planet
 from models.state import AgendaPhaseStep, GamePhase, GameState, StatusPhaseStep
+from models.technology import Technology
 
 
 class PlayerAction(StrEnum):
@@ -230,3 +233,202 @@ def get_player_options(state: GameState, player_id: str) -> PlayerOptions:
         available_actions=actions,
         passed=player.passed,
     )
+
+
+class PublicPlayerInfo(BaseModel):
+    """Publicly observable options and scoring potential for a player.
+
+    Unlike :class:`PlayerOptions`, this object is derived from *public* game
+    state only – it excludes information that is private to the player (action
+    cards, promissory notes, secret objectives).  It is suitable for
+    representing what an opponent can *potentially* do or score as seen from
+    the outside.
+
+    ``component_action`` is included because many component action sources are
+    publicly visible: technologies with an Action-timing ability (e.g. Sling
+    Relay), faction agents, and faction abilities with Action timing.
+    """
+
+    player_id: str = Field(description="The player these options apply to.")
+    phase: GamePhase = Field(description="The current game phase.")
+    available_actions: list[PlayerAction] = Field(
+        default_factory=list,
+        description=(
+            "Ordered list of publicly observable actions the player may legally take. "
+            "Includes component_action when the player has not passed, because public "
+            "component action sources (technology action abilities, faction agents, "
+            "faction abilities) are observable by all players."
+        ),
+    )
+    passed: bool = Field(
+        default=False,
+        description="True if the player has already passed this Action Phase.",
+    )
+    scoreable_points: int = Field(
+        default=0,
+        description=(
+            "Total VP the player can provably score from revealed public objectives right now."
+        ),
+    )
+    scoreable_objective_ids: list[str] = Field(
+        default_factory=list,
+        description="IDs of revealed public objectives the player can provably score right now.",
+    )
+
+    @property
+    def can_act(self) -> bool:
+        """Return ``True`` if the player has at least one available public action."""
+        return len(self.available_actions) > 0
+
+
+def get_public_player_info(
+    state: GameState,
+    player_id: str,
+    *,
+    objectives: list[Objective] | None = None,
+    planet_registry: dict[str, Planet] | None = None,
+    tech_registry: dict[str, Technology] | None = None,
+) -> PublicPlayerInfo:
+    """Return publicly observable actions and scoring potential for *player_id*.
+
+    Unlike :func:`get_player_options`, this function evaluates the player's
+    state using **public information only** – it is suitable for generating
+    what an opponent can potentially do or score as seen from the outside.
+
+    Differences from :func:`get_player_options`:
+
+    * ``component_action`` **is** included in the Action Phase.  Technologies
+      with an Action-timing ability (e.g. Sling Relay), faction agents, and
+      faction abilities with Action timing are publicly visible, so opponents
+      can observe that a player may have a component action available.
+    * Scoring is evaluated only against **revealed public objectives** (those
+      present in ``state.public_objectives``).  Secret objectives are excluded.
+
+    Parameters
+    ----------
+    state:
+        The current game state.
+    player_id:
+        The ID of the player to evaluate.
+    objectives:
+        Optional pool of :class:`~models.objective.Objective` objects to
+        evaluate for scoring.  Only objectives whose IDs appear in
+        ``state.public_objectives`` will be considered.  If ``None``, scoring
+        fields are left at zero / empty.
+    planet_registry:
+        Optional mapping of ``planet_id → Planet``.  Required to evaluate
+        planet-based scoring conditions.
+    tech_registry:
+        Optional mapping of ``tech_id → Technology``.  Required to evaluate
+        technology-based scoring conditions.
+
+    Returns
+    -------
+    PublicPlayerInfo
+        Object containing publicly observable actions and scoring potential.
+
+    Raises
+    ------
+    KeyError
+        If *player_id* is not present in *state*.
+    """
+    from engine.scoring import can_score_objective
+
+    base_opts = get_player_options(state, player_id)
+
+    # component_action is included: public component action sources (technology
+    # action abilities, faction agents, faction abilities with Action timing) are
+    # observable by all players.  Private action cards are not modelled here and
+    # do not affect which actions are listed.
+    public_actions = list(base_opts.available_actions)
+
+    # Scoring: evaluate only revealed public objectives.
+    scoreable_points = 0
+    scoreable_objective_ids: list[str] = []
+
+    if objectives is not None:
+        public_obj_ids = set(state.public_objectives)
+        player = state.get_player(player_id)
+        already_scored = set(player.scored_objectives)
+
+        for obj in objectives:
+            if obj.id not in public_obj_ids:
+                continue
+            if obj.id in already_scored:
+                continue
+            result = can_score_objective(
+                obj,
+                state,
+                player_id,
+                planet_registry=planet_registry,
+                tech_registry=tech_registry,
+            )
+            if result is True:
+                scoreable_points += obj.points
+                scoreable_objective_ids.append(obj.id)
+
+    return PublicPlayerInfo(
+        player_id=player_id,
+        phase=base_opts.phase,
+        available_actions=public_actions,
+        passed=base_opts.passed,
+        scoreable_points=scoreable_points,
+        scoreable_objective_ids=scoreable_objective_ids,
+    )
+
+
+def get_all_opponents_public_info(
+    state: GameState,
+    viewing_player_id: str,
+    *,
+    objectives: list[Objective] | None = None,
+    planet_registry: dict[str, Planet] | None = None,
+    tech_registry: dict[str, Technology] | None = None,
+) -> dict[str, PublicPlayerInfo]:
+    """Return publicly observable options and scoring potential for all opponents.
+
+    Iterates over every player in *state* except *viewing_player_id* and calls
+    :func:`get_public_player_info` for each.
+
+    Parameters
+    ----------
+    state:
+        The current game state.
+    viewing_player_id:
+        The player whose perspective we are representing.  This player is
+        excluded from the returned mapping.
+    objectives:
+        Optional pool of :class:`~models.objective.Objective` objects to
+        evaluate for scoring.  See :func:`get_public_player_info`.
+    planet_registry:
+        Optional mapping of ``planet_id → Planet``.  See
+        :func:`get_public_player_info`.
+    tech_registry:
+        Optional mapping of ``tech_id → Technology``.  See
+        :func:`get_public_player_info`.
+
+    Returns
+    -------
+    dict[str, PublicPlayerInfo]
+        Mapping of ``opponent_id → PublicPlayerInfo`` for every player other
+        than *viewing_player_id*.
+
+    Raises
+    ------
+    KeyError
+        If *viewing_player_id* is not present in *state*.
+    """
+    # Validate that the viewing player exists.
+    state.get_player(viewing_player_id)
+
+    return {
+        pid: get_public_player_info(
+            state,
+            pid,
+            objectives=objectives,
+            planet_registry=planet_registry,
+            tech_registry=tech_registry,
+        )
+        for pid in state.players
+        if pid != viewing_player_id
+    }
