@@ -1,5 +1,5 @@
 """
-Fetch an AsyncTI4 game snapshot from S3 and print a readable analysis.
+Fetch an AsyncTI4 game snapshot from the bot API and print a readable analysis.
 
 Usage::
 
@@ -8,6 +8,10 @@ Usage::
 Example::
 
     python scripts/analyze_game.py pbd22295
+
+Game data is fetched from::
+
+    https://bot.asyncti4.com/api/public/game/{game}/web-data
 """
 
 from __future__ import annotations
@@ -24,8 +28,8 @@ from urllib.error import URLError
 if TYPE_CHECKING:
     from models.state import GameState
 
-S3_URL_TEMPLATE = (
-    "https://s3.us-east-1.amazonaws.com/asyncti4.com/webdata/{game}/{game}.json"
+WEB_DATA_URL_TEMPLATE = (
+    "https://bot.asyncti4.com/api/public/game/{game}/web-data"
 )
 
 # Path to the bundled data files (data/ at repo root).
@@ -708,8 +712,8 @@ def _get_planet_ri(
 
 
 def fetch_game_json(game_number: str) -> dict:
-    """Download the game snapshot JSON from S3 and return it as a dict."""
-    url = S3_URL_TEMPLATE.format(game=game_number)
+    """Download the game snapshot JSON from the asyncti4 bot web-data API."""
+    url = WEB_DATA_URL_TEMPLATE.format(game=game_number)
     print(f"Fetching game data from: {url}")
     try:
         with urllib.request.urlopen(url, timeout=30) as response:  # noqa: S310
