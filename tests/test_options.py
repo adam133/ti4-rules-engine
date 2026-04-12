@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from engine.options import PlayerAction, PlayerOptions, get_player_options
-from models.state import GamePhase, GameState
+from models.state import AgendaPhaseStep, GamePhase, GameState, StatusPhaseStep
 
 # ---------------------------------------------------------------------------
 # Strategy Phase
@@ -108,6 +108,7 @@ class TestStatusPhase:
 
     def test_ready_cards_available(self, game_state: GameState) -> None:
         game_state.phase = GamePhase.STATUS
+        game_state.status_phase_step = StatusPhaseStep.READY_CARDS
         opts = get_player_options(game_state, "player_1")
         assert PlayerAction.READY_CARDS in opts.available_actions
 
@@ -126,16 +127,19 @@ class TestStatusPhase:
 class TestAgendaPhase:
     def test_cast_votes_available(self, game_state: GameState) -> None:
         game_state.phase = GamePhase.AGENDA
+        game_state.agenda_phase_step = AgendaPhaseStep.VOTE
         opts = get_player_options(game_state, "player_1")
         assert PlayerAction.CAST_VOTES in opts.available_actions
 
     def test_abstain_available(self, game_state: GameState) -> None:
         game_state.phase = GamePhase.AGENDA
+        game_state.agenda_phase_step = AgendaPhaseStep.VOTE
         opts = get_player_options(game_state, "player_1")
         assert PlayerAction.ABSTAIN in opts.available_actions
 
     def test_no_tactical_action(self, game_state: GameState) -> None:
         game_state.phase = GamePhase.AGENDA
+        game_state.agenda_phase_step = AgendaPhaseStep.VOTE
         opts = get_player_options(game_state, "player_1")
         assert PlayerAction.TACTICAL_ACTION not in opts.available_actions
 

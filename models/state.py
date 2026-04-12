@@ -18,6 +18,77 @@ class GamePhase(StrEnum):
     AGENDA = "agenda"
 
 
+class StatusPhaseStep(StrEnum):
+    """
+    The eight ordered steps of the TI4 Status Phase.
+
+    Sequence (per the Living Rules Reference):
+    1. SCORE_OBJECTIVES
+    2. REVEAL_PUBLIC_OBJECTIVE
+    3. DRAW_ACTION_CARDS
+    4. REMOVE_COMMAND_TOKENS
+    5. GAIN_AND_REDISTRIBUTE_COMMAND_TOKENS
+    6. READY_CARDS
+    7. REPAIR_UNITS
+    8. RETURN_STRATEGY_CARDS
+    """
+
+    SCORE_OBJECTIVES = "score_objectives"
+    REVEAL_PUBLIC_OBJECTIVE = "reveal_public_objective"
+    DRAW_ACTION_CARDS = "draw_action_cards"
+    REMOVE_COMMAND_TOKENS = "remove_command_tokens"
+    GAIN_AND_REDISTRIBUTE_COMMAND_TOKENS = "gain_and_redistribute_command_tokens"
+    READY_CARDS = "ready_cards"
+    REPAIR_UNITS = "repair_units"
+    RETURN_STRATEGY_CARDS = "return_strategy_cards"
+
+
+# Ordered sequence used to advance through the Status Phase.
+STATUS_PHASE_STEPS: list[StatusPhaseStep] = [
+    StatusPhaseStep.SCORE_OBJECTIVES,
+    StatusPhaseStep.REVEAL_PUBLIC_OBJECTIVE,
+    StatusPhaseStep.DRAW_ACTION_CARDS,
+    StatusPhaseStep.REMOVE_COMMAND_TOKENS,
+    StatusPhaseStep.GAIN_AND_REDISTRIBUTE_COMMAND_TOKENS,
+    StatusPhaseStep.READY_CARDS,
+    StatusPhaseStep.REPAIR_UNITS,
+    StatusPhaseStep.RETURN_STRATEGY_CARDS,
+]
+
+
+class AgendaPhaseStep(StrEnum):
+    """
+    The ordered steps of the TI4 Agenda Phase.
+
+    The Agenda Phase resolves two agendas per round.  Each agenda follows
+    the sub-sequence REPLENISH_COMMODITIES → REVEAL_AGENDA → VOTE →
+    RESOLVE_OUTCOME; READY_PLANETS is performed once after both agendas.
+
+    Sequence (per the Living Rules Reference):
+    1. REPLENISH_COMMODITIES  (once, before first agenda)
+    2. REVEAL_AGENDA          (before each agenda vote)
+    3. VOTE                   (each agenda)
+    4. RESOLVE_OUTCOME        (each agenda)
+    5. READY_PLANETS          (once, after both agendas)
+    """
+
+    REPLENISH_COMMODITIES = "replenish_commodities"
+    REVEAL_AGENDA = "reveal_agenda"
+    VOTE = "vote"
+    RESOLVE_OUTCOME = "resolve_outcome"
+    READY_PLANETS = "ready_planets"
+
+
+# Ordered sequence used to advance through one agenda cycle.
+# REPLENISH_COMMODITIES appears only once (before the first agenda).
+AGENDA_PHASE_STEPS: list[AgendaPhaseStep] = [
+    AgendaPhaseStep.REPLENISH_COMMODITIES,
+    AgendaPhaseStep.REVEAL_AGENDA,
+    AgendaPhaseStep.VOTE,
+    AgendaPhaseStep.RESOLVE_OUTCOME,
+]
+
+
 class TurnOrder(BaseModel):
     """Encapsulates speaker position and the ordered list of player IDs."""
 
@@ -44,7 +115,17 @@ class PlayerState(BaseModel):
     strategy_card_ids: list[str] = Field(default_factory=list)
     passed: bool = Field(default=False, description="True if the player has passed this round.")
     commodities: int = Field(default=0, ge=0)
+    commodities_cap: int = Field(
+        default=3,
+        ge=0,
+        description="Maximum commodities this player can hold (faction-dependent).",
+    )
     trade_goods: int = Field(default=0, ge=0)
+    command_tokens: int = Field(
+        default=0,
+        ge=0,
+        description="Number of command tokens on this player's command sheet.",
+    )
     action_cards: list[str] = Field(default_factory=list, description="Hand of Action Card IDs.")
     promissory_notes: list[str] = Field(
         default_factory=list, description="Promissory Note card IDs in hand."
@@ -74,6 +155,22 @@ class GameState(BaseModel):
     game_id: str = Field(description="Unique identifier for this game session.")
     round_number: int = Field(default=1, ge=1, description="Current game round (1-indexed).")
     phase: GamePhase = Field(default=GamePhase.STRATEGY, description="Current game phase.")
+    status_phase_step: StatusPhaseStep = Field(
+        default=StatusPhaseStep.SCORE_OBJECTIVES,
+        description="Current step within the Status Phase.",
+    )
+    agenda_phase_step: AgendaPhaseStep = Field(
+        default=AgendaPhaseStep.REPLENISH_COMMODITIES,
+        description="Current step within the Agenda Phase.",
+    )
+    agendas_resolved: int = Field(
+        default=0,
+        ge=0,
+        description=(
+            "Number of agendas resolved so far in the current Agenda Phase. "
+            "Two agendas are resolved per round."
+        ),
+    )
     turn_order: TurnOrder
     players: dict[str, PlayerState] = Field(
         default_factory=dict,
