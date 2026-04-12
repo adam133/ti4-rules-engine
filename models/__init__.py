@@ -9,6 +9,7 @@ Exports all core Pydantic schemas so consumers can do:
 from models.card import ActionCard, StrategyCard
 from models.faction import Faction
 from models.map import AnomalyType, GalaxyMap, System, WormholeType
+from models.objective import Objective, ObjectiveType, ScoringCondition, ScoringConditionType
 from models.planet import Planet
 from models.state import (
     AgendaPhaseStep,
@@ -28,7 +29,11 @@ __all__ = [
     "GalaxyMap",
     "GamePhase",
     "GameState",
+    "Objective",
+    "ObjectiveType",
     "Planet",
+    "ScoringCondition",
+    "ScoringConditionType",
     "StatusPhaseStep",
     "StrategyCard",
     "System",

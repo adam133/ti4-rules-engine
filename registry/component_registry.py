@@ -20,6 +20,7 @@ import structlog
 
 from models.card import ActionCard, StrategyCard
 from models.faction import Faction
+from models.objective import Objective
 from models.planet import Planet
 from models.technology import Technology
 from models.unit import Unit
@@ -27,7 +28,7 @@ from models.unit import Unit
 logger = structlog.get_logger(__name__)
 
 # Type alias for any registered component
-Component = Technology | ActionCard | StrategyCard | Faction | Planet | Unit
+Component = Technology | ActionCard | StrategyCard | Faction | Planet | Unit | Objective
 
 
 class ComponentRegistry:
@@ -89,6 +90,9 @@ class ComponentRegistry:
 
     def register_unit(self, unit: Unit) -> None:
         self.register(unit)
+
+    def register_objective(self, objective: Objective) -> None:
+        self.register(objective)
 
     # ------------------------------------------------------------------
     # Retrieval
