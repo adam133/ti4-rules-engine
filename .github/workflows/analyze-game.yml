@@ -25,7 +25,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: pip install -e .
+        run: pip install .
 
       - name: Analyze game ${{ inputs.game_number }}
         run: python scripts/analyze_game.py "${{ inputs.game_number }}"
