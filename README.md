@@ -233,7 +233,112 @@ The complete set of `PlayerAction` values:
 | `resolve_outcome` | Agenda | 4 – Resolve Outcome | Speaker only |
 | `ready_planets` | Agenda | After both agendas | Always |
 
-## Project Roadmap
+## Movement Range Evaluation
+
+The `engine.movement` module evaluates which systems a fleet can reach in a
+single tactical action.  `get_fleet_move` computes the fleet's effective
+movement speed; `get_reachable_systems` performs a BFS over a `GalaxyMap`.
+
+```python
+from engine.movement import get_fleet_move, get_reachable_systems
+from models.map import GalaxyMap, System, WormholeType, AnomalyType
+from models.unit import Unit, UnitType
+
+# Define unit stats
+carrier = Unit(id="carrier", name="Carrier", unit_type=UnitType.CARRIER,
+               cost=3, combat=9, move=2, capacity=4)
+fighter = Unit(id="fighter", name="Fighter", unit_type=UnitType.FIGHTER,
+               cost=1, combat=9, move=0)
+unit_registry = {"carrier": carrier, "fighter": fighter}
+
+# Build a simple 6-system map
+galaxy = GalaxyMap(systems={
+    "home":  System(id="home",  adjacent_system_ids=["A", "B"]),
+    "A":     System(id="A",     adjacent_system_ids=["home", "C"]),
+    "B":     System(id="B",     adjacent_system_ids=["home", "C"],
+                                wormholes=[WormholeType.ALPHA]),
+    "C":     System(id="C",     adjacent_system_ids=["A", "B", "D"]),
+    "D":     System(id="D",     adjacent_system_ids=["C"]),
+    "worm":  System(id="worm",  adjacent_system_ids=[],
+                                wormholes=[WormholeType.ALPHA]),
+})
+
+fleet = {"carrier": 2, "fighter": 3}
+
+move  = get_fleet_move(fleet, unit_registry)             # → 2 (fighters excluded)
+reach = get_reachable_systems(galaxy, "home", move)
+# → {"A", "B", "C", "worm"}  (worm reachable via alpha wormhole from B)
+
+# With Gravity Drive technology: carriers move 3
+move_gd = get_fleet_move(fleet, unit_registry, gravity_drive=True)  # → 3
+
+# Enemy ships block further movement
+reach_blocked = get_reachable_systems(
+    galaxy, "home", move, enemy_ship_system_ids={"A"}
+)
+# → {"A", "B", "worm"}  (can enter A but not pass through)
+```
+
+### Anomaly rules
+
+| Anomaly | Effect on movement |
+|---|---|
+| Supernova | Impassable – ships cannot enter |
+| Nebula | Ships must stop upon entry; cannot move through |
+| Asteroid Field | Ships must stop upon entry (Fighters/Mechs exempt) |
+| Gravity Rift | +1 movement when entering; ships risk casualties on exit |
+
+## Combat Simulation
+
+`engine.combat.simulate_combat` runs a configurable number of independent
+Monte Carlo space-combat simulations and returns win probabilities and expected
+survivor counts.
+
+```python
+from engine.combat import CombatGroup, CombatUnit, simulate_combat
+from models.unit import Unit, UnitType
+
+dreadnought = Unit(id="dreadnought", name="Dreadnought",
+                   unit_type=UnitType.DREADNOUGHT,
+                   cost=4, combat=5, sustain_damage=True,
+                   move=1, capacity=1, combat_rolls=2)
+destroyer   = Unit(id="destroyer", name="Destroyer",
+                   unit_type=UnitType.DESTROYER, cost=1, combat=9, move=2)
+fighter     = Unit(id="fighter",   name="Fighter",
+                   unit_type=UnitType.FIGHTER,   cost=1, combat=9)
+
+attacker = CombatGroup([
+    CombatUnit(dreadnought, count=2),
+    CombatUnit(destroyer,   count=1),
+])
+defender = CombatGroup([
+    CombatUnit(fighter, count=5),
+])
+
+result = simulate_combat(attacker, defender, simulations=5000, seed=42)
+print(f"Attacker wins {result.attacker_win_probability:.1%}")
+print(f"Defender wins {result.defender_win_probability:.1%}")
+print(f"Avg rounds:   {result.average_rounds:.1f}")
+print("Expected attacker survivors:", result.attacker_expected_survivors)
+# Attacker wins ~98%
+# Avg rounds: ~1.1
+
+# Flat combat bonus from an Action Card (e.g. Morale Boost)
+result_boosted = simulate_combat(
+    attacker, defender, attacker_modifier=1, simulations=5000
+)
+```
+
+### Combat mechanics
+
+| Mechanic | Description |
+|---|---|
+| Combat rolls | Each unit rolls `combat_rolls` dice; roll ≥ `combat` value = hit |
+| Sustain Damage | Unit absorbs 1 hit (takes damage token instead of being destroyed) |
+| Hit assignment | Optimal heuristic: sustain high-cost units first, destroy cheapest first |
+| Simultaneous | Both sides roll and assign hits at the same time each round |
+
+
 
 ### Phase 1 – Foundation & Schema ✅
 - [x] Pydantic V2 models: `Faction`, `Unit`, `Technology`, `StrategyCard`, `ActionCard`, `Planet`
@@ -262,3 +367,9 @@ The complete set of `PlayerAction` values:
 - [x] `RoundEngine.advance_status_step()` – advances through the 8 Status Phase steps
 - [x] `RoundEngine.advance_agenda_step()` – advances through the Agenda Phase (handles two-agenda cycle)
 - [x] Step-aware `get_player_options` – returns only the actions legal for the *current* phase step; speaker-only actions (reveal objective, reveal agenda, resolve outcome) restricted to the speaker
+
+### Phase 6 – Tactical Action Support ✅
+- [x] `models.map` – `System` and `GalaxyMap` models with hex adjacency, wormholes, and anomalies
+- [x] `engine.movement.get_fleet_move` – effective movement value for a fleet (minimum move of all non-transported ships, +Gravity Drive bonus)
+- [x] `engine.movement.get_reachable_systems` – BFS over the galaxy map returning all systems reachable in one tactical action, respecting anomaly rules (supernova impassable, nebula/asteroid must-stop, gravity rift +1 bonus) and enemy-ship blocking
+- [x] `engine.combat.simulate_combat` – Monte Carlo space-combat simulation returning win probabilities and expected survivor counts for any two opposing fleets
