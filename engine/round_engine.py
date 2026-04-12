@@ -14,7 +14,14 @@ from __future__ import annotations
 import structlog
 from transitions import Machine
 
-from models.state import GamePhase, GameState
+from models.state import (
+    AGENDA_PHASE_STEPS,
+    STATUS_PHASE_STEPS,
+    AgendaPhaseStep,
+    GamePhase,
+    GameState,
+    StatusPhaseStep,
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -94,6 +101,7 @@ class RoundEngine:
 
     def on_enter_status(self) -> None:
         self._sync_phase(GamePhase.STATUS)
+        self.game_state.status_phase_step = StatusPhaseStep.SCORE_OBJECTIVES
         logger.info(
             "phase_transition",
             game_id=self.game_state.game_id,
@@ -103,6 +111,8 @@ class RoundEngine:
 
     def on_enter_agenda(self) -> None:
         self._sync_phase(GamePhase.AGENDA)
+        self.game_state.agenda_phase_step = AgendaPhaseStep.REPLENISH_COMMODITIES
+        self.game_state.agendas_resolved = 0
         logger.info(
             "phase_transition",
             game_id=self.game_state.game_id,
@@ -154,3 +164,118 @@ class RoundEngine:
             game_id=self.game_state.game_id,
             player_id=player_id,
         )
+
+    # ------------------------------------------------------------------
+    # Status Phase step helpers
+    # ------------------------------------------------------------------
+
+    def advance_status_step(self) -> StatusPhaseStep | None:
+        """Advance the Status Phase to the next step.
+
+        Returns
+        -------
+        StatusPhaseStep | None
+            The new current step, or ``None`` if all steps are complete (the
+            caller should then call :meth:`begin_agenda_phase` or
+            :meth:`begin_strategy_phase` to proceed).
+
+        Raises
+        ------
+        ValueError
+            If the current game phase is not STATUS.
+        """
+        if self.game_state.phase != GamePhase.STATUS:
+            raise ValueError(
+                f"advance_status_step called outside of Status Phase "
+                f"(current phase: {self.game_state.phase!r})."
+            )
+        current = self.game_state.status_phase_step
+        idx = STATUS_PHASE_STEPS.index(current)
+        if idx + 1 < len(STATUS_PHASE_STEPS):
+            next_step = STATUS_PHASE_STEPS[idx + 1]
+            self.game_state.status_phase_step = next_step
+            logger.info(
+                "status_step_advanced",
+                game_id=self.game_state.game_id,
+                round=self.game_state.round_number,
+                new_step=next_step,
+            )
+            return next_step
+        # All 8 steps complete – signal the caller.
+        logger.info(
+            "status_phase_complete",
+            game_id=self.game_state.game_id,
+            round=self.game_state.round_number,
+        )
+        return None
+
+    # ------------------------------------------------------------------
+    # Agenda Phase step helpers
+    # ------------------------------------------------------------------
+
+    def advance_agenda_step(self) -> AgendaPhaseStep | None:
+        """Advance the Agenda Phase to the next step.
+
+        The Agenda Phase resolves **two** agendas per round.  After
+        RESOLVE_OUTCOME the engine checks whether a second agenda remains.
+        If so it loops back to REVEAL_AGENDA; if both agendas are done it
+        advances to READY_PLANETS.
+
+        Returns
+        -------
+        AgendaPhaseStep | None
+            The new current step, or ``None`` once READY_PLANETS is also
+            complete (the caller should then call
+            :meth:`begin_strategy_phase`).
+
+        Raises
+        ------
+        ValueError
+            If the current game phase is not AGENDA.
+        """
+        if self.game_state.phase != GamePhase.AGENDA:
+            raise ValueError(
+                f"advance_agenda_step called outside of Agenda Phase "
+                f"(current phase: {self.game_state.phase!r})."
+            )
+        current = self.game_state.agenda_phase_step
+
+        # REPLENISH_COMMODITIES always leads to REVEAL_AGENDA.
+        if current == AgendaPhaseStep.REPLENISH_COMMODITIES:
+            next_step = AgendaPhaseStep.REVEAL_AGENDA
+
+        elif current == AgendaPhaseStep.REVEAL_AGENDA:
+            next_step = AgendaPhaseStep.VOTE
+
+        elif current == AgendaPhaseStep.VOTE:
+            next_step = AgendaPhaseStep.RESOLVE_OUTCOME
+
+        elif current == AgendaPhaseStep.RESOLVE_OUTCOME:
+            self.game_state.agendas_resolved += 1
+            if self.game_state.agendas_resolved < 2:
+                # Start second agenda cycle.
+                next_step = AgendaPhaseStep.REVEAL_AGENDA
+            else:
+                # Both agendas done – ready planets then finish.
+                next_step = AgendaPhaseStep.READY_PLANETS
+
+        elif current == AgendaPhaseStep.READY_PLANETS:
+            # Agenda Phase fully complete.
+            logger.info(
+                "agenda_phase_complete",
+                game_id=self.game_state.game_id,
+                round=self.game_state.round_number,
+            )
+            return None
+
+        else:  # pragma: no cover
+            raise ValueError(f"Unexpected agenda phase step: {current!r}")
+
+        self.game_state.agenda_phase_step = next_step
+        logger.info(
+            "agenda_step_advanced",
+            game_id=self.game_state.game_id,
+            round=self.game_state.round_number,
+            new_step=next_step,
+        )
+        return next_step

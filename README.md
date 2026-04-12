@@ -211,17 +211,27 @@ if PlayerAction.STRATEGIC_ACTION in options.available_actions:
 
 The complete set of `PlayerAction` values:
 
-| Action | Phase | Condition |
-|---|---|---|
-| `pick_strategy_card` | Strategy | Player does not yet hold a strategy card |
-| `tactical_action` | Action | Player has not passed |
-| `strategic_action` | Action | Player has not passed **and** holds a strategy card |
-| `component_action` | Action | Player has not passed |
-| `pass` | Action | Player has not passed |
-| `score_objective` | Status | Always |
-| `ready_cards` | Status | Always |
-| `cast_votes` | Agenda | Always |
-| `abstain` | Agenda | Always |
+| Action | Phase | Step | Condition |
+|---|---|---|---|
+| `pick_strategy_card` | Strategy | — | Player does not yet hold a strategy card |
+| `tactical_action` | Action | — | Player has not passed |
+| `strategic_action` | Action | — | Player has not passed **and** holds a strategy card |
+| `component_action` | Action | — | Player has not passed |
+| `pass` | Action | — | Player has not passed |
+| `score_objective` | Status | 1 – Score Objectives | Always |
+| `reveal_public_objective` | Status | 2 – Reveal Public Objective | Speaker only |
+| `draw_action_cards` | Status | 3 – Draw Action Cards | Always |
+| `remove_command_tokens` | Status | 4 – Remove Command Tokens | Always |
+| `gain_and_redistribute_command_tokens` | Status | 5 – Gain & Redistribute Command Tokens | Always |
+| `ready_cards` | Status | 6 – Ready Cards | Always |
+| `repair_units` | Status | 7 – Repair Units | Always |
+| `return_strategy_cards` | Status | 8 – Return Strategy Cards | Always |
+| `replenish_commodities` | Agenda | 1 – Replenish Commodities | Always |
+| `reveal_agenda` | Agenda | 2 – Reveal Agenda | Speaker only |
+| `cast_votes` | Agenda | 3 – Vote | Always |
+| `abstain` | Agenda | 3 – Vote | Always |
+| `resolve_outcome` | Agenda | 4 – Resolve Outcome | Speaker only |
+| `ready_planets` | Agenda | After both agendas | Always |
 
 ## Project Roadmap
 
@@ -243,3 +253,12 @@ The complete set of `PlayerAction` values:
 ### Phase 4 – External State Ingestion & Player Options ✅
 - [x] `AsyncTI4` adapter – parse the AsyncTI4 Discord bot JSON export into native `GameState`
 - [x] `get_player_options` – return rules-allowable actions for a player given the current state
+
+### Phase 5 – Phase Step Tracking ✅
+- [x] `StatusPhaseStep` enum – the 8 ordered steps of the TI4 Status Phase (per the Living Rules Reference)
+- [x] `AgendaPhaseStep` enum – the ordered steps of the TI4 Agenda Phase (replenish → reveal → vote → resolve, ×2 then ready planets)
+- [x] `status_phase_step` / `agenda_phase_step` / `agendas_resolved` fields on `GameState`
+- [x] `command_tokens` and `commodities_cap` fields on `PlayerState`
+- [x] `RoundEngine.advance_status_step()` – advances through the 8 Status Phase steps
+- [x] `RoundEngine.advance_agenda_step()` – advances through the Agenda Phase (handles two-agenda cycle)
+- [x] Step-aware `get_player_options` – returns only the actions legal for the *current* phase step; speaker-only actions (reveal objective, reveal agenda, resolve outcome) restricted to the speaker
