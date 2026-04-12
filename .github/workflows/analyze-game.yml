@@ -1,0 +1,33 @@
+name: Analyze TI4 Game
+
+on:
+  workflow_dispatch:
+    inputs:
+      game_number:
+        description: "AsyncTI4 game number (e.g. pbd22295)"
+        required: true
+        type: string
+
+jobs:
+  analyze:
+    name: Fetch and analyze game ${{ inputs.game_number }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -e .
+
+      - name: Analyze game ${{ inputs.game_number }}
+        run: python scripts/analyze_game.py "${{ inputs.game_number }}"
+        env:
+          PYTHONPATH: ${{ github.workspace }}
