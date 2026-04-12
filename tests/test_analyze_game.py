@@ -99,7 +99,7 @@ class TestGetAdjacentPositions:
 # ---------------------------------------------------------------------------
 
 
-def _make_tile(anomaly: bool = False, ccs: list[str] | None = None) -> dict:
+def _make_tile_data(anomaly: bool = False, ccs: list[str] | None = None) -> dict:
     return {"anomaly": anomaly, "ccs": ccs or [], "planets": {}, "space": {}}
 
 
@@ -110,7 +110,7 @@ class TestGetReachableSystems:
         + [f"10{i}" for i in range(1, 7)]
         + [f"2{i:02d}" for i in range(1, 13)]
     )
-    _OPEN_MAP: dict = {pos: _make_tile() for pos in _ALL_POSITIONS}
+    _OPEN_MAP: dict = {pos: _make_tile_data() for pos in _ALL_POSITIONS}
 
     def test_move_zero_returns_empty(self) -> None:
         result = get_reachable_systems("101", 0, self._OPEN_MAP, "red")
@@ -134,26 +134,26 @@ class TestGetReachableSystems:
         assert ring2.issubset(result)
 
     def test_anomaly_tile_blocks_entry_and_passthrough(self) -> None:
-        tile_data = {**self._OPEN_MAP, "102": _make_tile(anomaly=True)}
+        tile_data = {**self._OPEN_MAP, "102": _make_tile_data(anomaly=True)}
         result = get_reachable_systems("101", 3, tile_data, "red")
         assert "102" not in result  # can't enter
         # 204 can only be reached via 102 (or other neighbours of 103)
         # but NOT via the anomaly path  101→102→204 is blocked
 
     def test_activated_tile_blocked_by_own_cc(self) -> None:
-        tile_data = {**self._OPEN_MAP, "102": _make_tile(ccs=["red"])}
+        tile_data = {**self._OPEN_MAP, "102": _make_tile_data(ccs=["red"])}
         result = get_reachable_systems("101", 2, tile_data, "red")
         assert "102" not in result  # locked by own CC
 
     def test_other_player_cc_does_not_block(self) -> None:
-        tile_data = {**self._OPEN_MAP, "102": _make_tile(ccs=["blue"])}
+        tile_data = {**self._OPEN_MAP, "102": _make_tile_data(ccs=["blue"])}
         result = get_reachable_systems("101", 2, tile_data, "red")
         assert "102" in result  # blue's CC doesn't block red
 
     def test_tile_not_in_map_skipped(self) -> None:
         # Only positions 000 and 101-106 in map – ring 2 positions absent
-        limited_map = {"000": _make_tile()} | {
-            f"10{i}": _make_tile() for i in range(1, 7)
+        limited_map = {"000": _make_tile_data()} | {
+            f"10{i}": _make_tile_data() for i in range(1, 7)
         }
         result = get_reachable_systems("000", 2, limited_map, "red")
         # Ring 2 tiles are not present → shouldn't appear

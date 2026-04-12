@@ -104,6 +104,8 @@ _SHIP_MOVE: dict[str, int] = {
 }
 
 _TRANSPORTED_UNITS = frozenset({"ff", "gf", "mf"})  # fighter, ground force, mech
+# NOTE: _TRANSPORTED_UNITS is used as documentation of which unit types are
+# transported by ships and therefore excluded from fleet move calculations.
 
 
 def _fleet_move_value(units: list[dict[str, Any]]) -> int:
@@ -213,12 +215,13 @@ def _get_tactical_reach(
         if fleet_move <= 0:
             continue
         # Special positions (non-numeric like "br", "tl") cannot be pathfound
+        # using the hex-grid formula.  Note: "000" (centre) is numeric and
+        # handled normally by get_adjacent_positions / get_reachable_systems.
         try:
             int(tile_pos)
         except ValueError:
-            if tile_pos != "000":
-                special_positions.append(tile_pos)
-                continue
+            special_positions.append(tile_pos)
+            continue
         for dest in get_reachable_systems(tile_pos, fleet_move, tile_unit_data, faction):
             if dest not in reachable:
                 planets = list((tile_unit_data.get(dest) or {}).get("planets", {}).keys())
@@ -283,7 +286,7 @@ def print_player_summary(state: "GameState", player_options_map: dict) -> None:
         print(f"    VP:       {player.victory_points}")
         print(f"    TG:       {player.trade_goods}  |  Commodities: {player.commodities}")
         print(
-            f"    Tokens:   {player.tactical_tokens} tactic"
+            f"    Tokens:   {player.tactical_tokens} tactical"
             f" / {player.fleet_tokens} fleet"
             f" / {player.strategy_tokens} strategy"
         )
