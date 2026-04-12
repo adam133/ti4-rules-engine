@@ -1,5 +1,5 @@
 """
-Fetch an AsyncTI4 game snapshot from S3 and print a readable analysis.
+Fetch an AsyncTI4 game snapshot from the bot API and print a readable analysis.
 
 Usage::
 
@@ -24,6 +24,9 @@ from urllib.error import URLError
 if TYPE_CHECKING:
     from models.state import GameState
 
+WEB_DATA_URL_TEMPLATE = (
+    "https://bot.asyncti4.com/api/public/game/{game}/web-data"
+)
 S3_URL_TEMPLATE = (
     "https://s3.us-east-1.amazonaws.com/asyncti4.com/webdata/{game}/{game}.json"
 )
@@ -708,11 +711,27 @@ def _get_planet_ri(
 
 
 def fetch_game_json(game_number: str) -> dict:
-    """Download the game snapshot JSON from S3 and return it as a dict."""
-    url = S3_URL_TEMPLATE.format(game=game_number)
-    print(f"Fetching game data from: {url}")
+    """Download the game snapshot JSON and return it as a dict.
+
+    Tries the asyncti4 bot web-data API first.  If that request fails (e.g.
+    the game is not found or the service is unavailable), falls back to the
+    legacy S3 snapshot URL.
+    """
+    web_url = WEB_DATA_URL_TEMPLATE.format(game=game_number)
+    print(f"Fetching game data from: {web_url}")
     try:
-        with urllib.request.urlopen(url, timeout=30) as response:  # noqa: S310
+        with urllib.request.urlopen(web_url, timeout=30) as response:  # noqa: S310
+            raw = response.read().decode("utf-8")
+        return json.loads(raw)
+    except URLError as exc:
+        print(
+            f"Warning: web-data API unavailable ({exc}); trying S3 fallback …",
+            file=sys.stderr,
+        )
+    s3_url = S3_URL_TEMPLATE.format(game=game_number)
+    print(f"Fetching game data from: {s3_url}")
+    try:
+        with urllib.request.urlopen(s3_url, timeout=30) as response:  # noqa: S310
             raw = response.read().decode("utf-8")
     except URLError as exc:
         print(f"ERROR: Failed to fetch game data – {exc}", file=sys.stderr)

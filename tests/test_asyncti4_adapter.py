@@ -525,3 +525,139 @@ class TestTileUnitDataInExtra:
         state = from_asyncti4(SAMPLE_DATA)
         assert state.extra["tile_unit_data"] == {}
 
+
+# ---------------------------------------------------------------------------
+# Web-data API: nested objectives format
+# ---------------------------------------------------------------------------
+
+# Minimal sample of the nested objectives structure returned by the web-data API.
+SAMPLE_OBJECTIVES_BLOCK: dict = {
+    "stage1Objectives": [
+        {
+            "key": "research_outposts",
+            "name": "Found Research Outposts",
+            "revealed": True,
+            "scoredFactions": ["jolnar", "ralnel"],
+            "pointValue": 1,
+        },
+        {
+            "key": "expand_borders",
+            "name": "Expand Borders",
+            "revealed": True,
+            "scoredFactions": ["jolnar"],
+            "pointValue": 1,
+        },
+        {
+            "key": "UNREVEALED_9999",
+            "name": "UNREVEALED",
+            "revealed": False,
+            "scoredFactions": [],
+            "pointValue": 1,
+        },
+    ],
+    "stage2Objectives": [
+        {
+            "key": "subdue",
+            "name": "Subdue the Galaxy",
+            "revealed": True,
+            "scoredFactions": [],
+            "pointValue": 2,
+        },
+    ],
+    "customObjectives": [
+        {
+            "key": "Custodian/Imperial",
+            "name": "Custodian/Imperial",
+            "revealed": True,
+            "scoredFactions": ["ralnel"],
+            "pointValue": 1,
+        },
+    ],
+    "allObjectives": [],
+}
+
+# Build a minimal web-data style payload using the players from SAMPLE_DATA.
+# Note: SAMPLE_PLAYER_1 and SAMPLE_PLAYER_2 do not have a scoredPublicObjectives
+# field (the web-data API omits it; scoring is derived from the objectives block).
+SAMPLE_PLAYER_1_WEB: dict = {
+    **SAMPLE_PLAYER_1,
+}
+SAMPLE_PLAYER_2_WEB: dict = {
+    **SAMPLE_PLAYER_2,
+}
+
+SAMPLE_WEB_DATA: dict = {
+    "gameName": "pbd22295",
+    "gameRound": 3,
+    "lawsInPlay": [],
+    "playerData": [SAMPLE_PLAYER_1_WEB, SAMPLE_PLAYER_2_WEB],
+    "strategyCards": SAMPLE_DATA["strategyCards"],
+    "objectives": SAMPLE_OBJECTIVES_BLOCK,
+}
+
+
+class TestWebDataObjectivesFormat:
+    def test_public_objectives_extracted_from_nested_objectives(self) -> None:
+        """Revealed stage-I and stage-II objective IDs must populate publicObjectives."""
+        state = from_asyncti4(SAMPLE_WEB_DATA)
+        assert "research_outposts" in state.public_objectives
+        assert "expand_borders" in state.public_objectives
+        assert "subdue" in state.public_objectives
+
+    def test_unrevealed_objectives_excluded(self) -> None:
+        """Unrevealed objectives must not appear in publicObjectives."""
+        state = from_asyncti4(SAMPLE_WEB_DATA)
+        assert not any(k.startswith("UNREVEALED") for k in state.public_objectives)
+
+    def test_custom_objectives_excluded_from_public_objectives(self) -> None:
+        """Custom objectives (Custodians, etc.) are in customObjectives, not stage lists."""
+        state = from_asyncti4(SAMPLE_WEB_DATA)
+        assert "Custodian/Imperial" not in state.public_objectives
+
+    def test_scored_public_objectives_derived_from_scored_factions(self) -> None:
+        """Player scored public objectives must be derived from scoredFactions in objectives."""
+        state = from_asyncti4(SAMPLE_WEB_DATA)
+        # jolnar player scored both research_outposts and expand_borders
+        assert "research_outposts" in state.players["gokurohit"].scored_objectives
+        assert "expand_borders" in state.players["gokurohit"].scored_objectives
+        # ralnel player scored only research_outposts (not expand_borders)
+        assert "research_outposts" in state.players["Rowdy"].scored_objectives
+        assert "expand_borders" not in state.players["Rowdy"].scored_objectives
+
+    def test_per_player_scored_public_takes_precedence_over_objectives_block(self) -> None:
+        """When scoredPublicObjectives is set per-player, it overrides the objectives block."""
+        player_with_scored = {**SAMPLE_PLAYER_1, "scoredPublicObjectives": ["expand_borders"]}
+        data = {
+            **SAMPLE_WEB_DATA,
+            "playerData": [player_with_scored, SAMPLE_PLAYER_2_WEB],
+            # objectives block would also give jolnar "research_outposts"
+        }
+        state = from_asyncti4(data)
+        # Only the per-player list should be used for gokurohit
+        scored = state.players["gokurohit"].scored_objectives
+        assert "expand_borders" in scored
+        # research_outposts should NOT be there because per-player list takes over
+        assert "research_outposts" not in scored
+
+    def test_model_validator_populates_public_objectives(self) -> None:
+        """AsyncTI4GameData model should expose publicObjectives from nested objectives."""
+        parsed = AsyncTI4GameData.model_validate(SAMPLE_WEB_DATA)
+        assert "research_outposts" in parsed.publicObjectives
+        assert "expand_borders" in parsed.publicObjectives
+        assert "subdue" in parsed.publicObjectives
+
+    def test_legacy_public_objectives_list_not_overwritten(self) -> None:
+        """If publicObjectives is already populated, the nested objectives block is ignored."""
+        data = {
+            **SAMPLE_WEB_DATA,
+            "publicObjectives": ["existing_obj"],
+        }
+        parsed = AsyncTI4GameData.model_validate(data)
+        assert parsed.publicObjectives == ["existing_obj"]
+
+    def test_empty_objectives_block_leaves_public_objectives_empty(self) -> None:
+        """When objectives block is absent, publicObjectives stays empty."""
+        data = {**SAMPLE_DATA}  # no "objectives" key, no "publicObjectives" key
+        parsed = AsyncTI4GameData.model_validate(data)
+        assert parsed.publicObjectives == []
+

@@ -1,9 +1,23 @@
 """
 Adapter for the AsyncTI4 Discord bot JSON game-state format.
 
-The AsyncTI4 bot exports a JSON snapshot of each game to S3 at::
+Two data sources are supported:
 
-    https://s3.us-east-1.amazonaws.com/asyncti4.com/webdata/{gameId}/{gameId}.json
+* **Web-data API** (preferred) – served by the AsyncTI4 bot directly::
+
+      https://bot.asyncti4.com/api/public/game/{gameId}/web-data
+
+* **S3 snapshot** (legacy fallback) – a JSON file uploaded to S3::
+
+      https://s3.us-east-1.amazonaws.com/asyncti4.com/webdata/{gameId}/{gameId}.json
+
+The web-data API returns a richer payload (see ``versionSchema``) that wraps
+public objectives in a nested ``objectives`` dict (with ``stage1Objectives``,
+``stage2Objectives``, ``allObjectives``, etc.) and derives per-faction scored
+public objectives from each objective's ``scoredFactions`` list rather than
+storing them on each player entry.  The legacy S3 snapshot uses a flat
+``publicObjectives`` list and per-player ``scoredPublicObjectives`` lists.
+Both formats are handled transparently by the adapter.
 
 This module provides:
 
@@ -45,7 +59,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from models.state import GamePhase, GameState, PlayerState, TurnOrder
 
@@ -227,6 +241,40 @@ class AsyncTI4GameData(BaseModel):
         description="IDs of public objective cards that have been revealed during the game.",
     )
 
+    objectives: dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "Nested objectives structure from the web-data API.  Contains "
+            "'allObjectives', 'stage1Objectives', 'stage2Objectives', and "
+            "'customObjectives' sub-lists, each holding full objective objects "
+            "with 'key', 'revealed', and 'scoredFactions' fields.  When present "
+            "and 'publicObjectives' is empty, the revealed stage-I and stage-II "
+            "objective IDs are extracted automatically."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _populate_public_objectives_from_nested(self) -> AsyncTI4GameData:
+        """Derive ``publicObjectives`` from the web-data ``objectives`` block when absent.
+
+        Older S3 snapshots supply ``publicObjectives`` directly as a flat list
+        of string IDs.  The newer web-data API omits that field but exposes the
+        same information via ``objectives.stage1Objectives`` and
+        ``objectives.stage2Objectives`` (each entry has a ``key`` field and a
+        ``revealed`` boolean).  This validator bridges the two formats so that
+        downstream code always sees a populated ``publicObjectives`` list.
+        """
+        if self.publicObjectives:
+            return self  # already populated from the legacy S3 format
+        stage1: list[Any] = self.objectives.get("stage1Objectives", [])
+        stage2: list[Any] = self.objectives.get("stage2Objectives", [])
+        self.publicObjectives = [
+            obj["key"]
+            for obj in (stage1 + stage2)
+            if isinstance(obj, dict) and obj.get("revealed") and obj.get("key")
+        ]
+        return self
+
 
 # ---------------------------------------------------------------------------
 # Phase inference
@@ -331,6 +379,26 @@ def from_asyncti4(data: dict[str, Any] | AsyncTI4GameData) -> GameState:
 
     # Build player states keyed by userName, skipping eliminated players and
     # the Dicecord service account (faction == "neutral").
+
+    # The web-data API does not store scored public objectives per player;
+    # instead, each objective entry records which factions scored it via a
+    # ``scoredFactions`` list.  Build a faction → [obj_id, …] map from the
+    # stage-I and stage-II sub-lists so that players whose per-player
+    # ``scoredPublicObjectives`` list is empty can still have their scored
+    # public objectives populated correctly.
+    faction_scored_public: dict[str, list[str]] = {}
+    if data.objectives:
+        stage1: list[Any] = data.objectives.get("stage1Objectives", [])
+        stage2: list[Any] = data.objectives.get("stage2Objectives", [])
+        for obj in stage1 + stage2:
+            if not isinstance(obj, dict):
+                continue
+            key = obj.get("key")
+            if not key:
+                continue
+            for faction in obj.get("scoredFactions", []):
+                faction_scored_public.setdefault(str(faction), []).append(key)
+
     players: dict[str, PlayerState] = {}
     player_colors: dict[str, str] = {}
     player_leaders: dict[str, list[dict[str, Any]]] = {}
@@ -339,8 +407,11 @@ def from_asyncti4(data: dict[str, Any] | AsyncTI4GameData) -> GameState:
             continue
         if p.faction == "neutral":
             continue
+        # Prefer per-player scoredPublicObjectives (legacy S3 format); fall back
+        # to the faction-keyed map derived from the web-data objectives block.
+        scored_public = p.scoredPublicObjectives or faction_scored_public.get(p.faction, [])
         # Combine scored secrets and scored public objectives into one list
-        scored = list(p.secretsScored.keys()) + list(p.scoredPublicObjectives)
+        scored = list(p.secretsScored.keys()) + list(scored_public)
         players[p.userName] = PlayerState(
             player_id=p.userName,
             faction_id=p.faction,
