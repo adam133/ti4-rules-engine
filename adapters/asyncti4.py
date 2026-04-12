@@ -45,7 +45,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from models.state import GamePhase, GameState, PlayerState, TurnOrder
 
@@ -149,6 +149,33 @@ class AsyncTI4GameData(BaseModel):
     lawsInPlay: list[str] = Field(
         default_factory=list, description="IDs of laws currently in effect."
     )
+
+    @field_validator("lawsInPlay", mode="before")
+    @classmethod
+    def _normalize_laws_in_play(cls, v: object) -> list[str]:
+        """Accept both string IDs and full law-object dicts in ``lawsInPlay``.
+
+        Newer AsyncTI4 exports store each law as a dict containing (among
+        other fields) an ``"id"`` key.  Older exports (and the engine's own
+        test fixtures) store plain string IDs.  This validator normalizes
+        both shapes to a plain ``list[str]``.
+        """
+        if not isinstance(v, list):
+            return v  # let Pydantic emit the type error
+        result: list[str] = []
+        for item in v:
+            if isinstance(item, str):
+                result.append(item)
+            elif isinstance(item, dict):
+                if "id" not in item:
+                    raise ValueError(
+                        f"Law object in 'lawsInPlay' is missing required 'id' field: {item!r}"
+                    )
+                result.append(str(item["id"]))
+            else:
+                result.append(item)  # let Pydantic emit the type error
+        return result
+
     strategyCards: list[AsyncTI4StrategyCard] = Field(
         default_factory=list,
         description="Top-level strategy card metadata used to infer the current phase.",
