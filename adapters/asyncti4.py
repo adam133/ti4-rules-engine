@@ -1,23 +1,14 @@
 """
 Adapter for the AsyncTI4 Discord bot JSON game-state format.
 
-Two data sources are supported:
+Game data is fetched from the asyncti4 bot web-data API::
 
-* **Web-data API** (preferred) – served by the AsyncTI4 bot directly::
+    https://bot.asyncti4.com/api/public/game/{gameId}/web-data
 
-      https://bot.asyncti4.com/api/public/game/{gameId}/web-data
-
-* **S3 snapshot** (legacy fallback) – a JSON file uploaded to S3::
-
-      https://s3.us-east-1.amazonaws.com/asyncti4.com/webdata/{gameId}/{gameId}.json
-
-The web-data API returns a richer payload (see ``versionSchema``) that wraps
-public objectives in a nested ``objectives`` dict (with ``stage1Objectives``,
+The web-data API returns a payload (see ``versionSchema``) that wraps public
+objectives in a nested ``objectives`` dict (with ``stage1Objectives``,
 ``stage2Objectives``, ``allObjectives``, etc.) and derives per-faction scored
-public objectives from each objective's ``scoredFactions`` list rather than
-storing them on each player entry.  The legacy S3 snapshot uses a flat
-``publicObjectives`` list and per-player ``scoredPublicObjectives`` lists.
-Both formats are handled transparently by the adapter.
+public objectives from each objective's ``scoredFactions`` list.
 
 This module provides:
 

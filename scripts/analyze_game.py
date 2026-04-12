@@ -8,6 +8,10 @@ Usage::
 Example::
 
     python scripts/analyze_game.py pbd22295
+
+Game data is fetched from::
+
+    https://bot.asyncti4.com/api/public/game/{game}/web-data
 """
 
 from __future__ import annotations
@@ -26,9 +30,6 @@ if TYPE_CHECKING:
 
 WEB_DATA_URL_TEMPLATE = (
     "https://bot.asyncti4.com/api/public/game/{game}/web-data"
-)
-S3_URL_TEMPLATE = (
-    "https://s3.us-east-1.amazonaws.com/asyncti4.com/webdata/{game}/{game}.json"
 )
 
 # Path to the bundled data files (data/ at repo root).
@@ -711,27 +712,11 @@ def _get_planet_ri(
 
 
 def fetch_game_json(game_number: str) -> dict:
-    """Download the game snapshot JSON and return it as a dict.
-
-    Tries the asyncti4 bot web-data API first.  If that request fails (e.g.
-    the game is not found or the service is unavailable), falls back to the
-    legacy S3 snapshot URL.
-    """
-    web_url = WEB_DATA_URL_TEMPLATE.format(game=game_number)
-    print(f"Fetching game data from: {web_url}")
+    """Download the game snapshot JSON from the asyncti4 bot web-data API."""
+    url = WEB_DATA_URL_TEMPLATE.format(game=game_number)
+    print(f"Fetching game data from: {url}")
     try:
-        with urllib.request.urlopen(web_url, timeout=30) as response:  # noqa: S310
-            raw = response.read().decode("utf-8")
-        return json.loads(raw)
-    except URLError as exc:
-        print(
-            f"Warning: web-data API unavailable ({exc}); trying S3 fallback …",
-            file=sys.stderr,
-        )
-    s3_url = S3_URL_TEMPLATE.format(game=game_number)
-    print(f"Fetching game data from: {s3_url}")
-    try:
-        with urllib.request.urlopen(s3_url, timeout=30) as response:  # noqa: S310
+        with urllib.request.urlopen(url, timeout=30) as response:  # noqa: S310
             raw = response.read().decode("utf-8")
     except URLError as exc:
         print(f"ERROR: Failed to fetch game data – {exc}", file=sys.stderr)
