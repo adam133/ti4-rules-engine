@@ -240,9 +240,13 @@ class PublicPlayerInfo(BaseModel):
 
     Unlike :class:`PlayerOptions`, this object is derived from *public* game
     state only – it excludes information that is private to the player (action
-    cards, promissory notes, secret objectives, faction abilities with Action
-    timing).  It is suitable for representing what an opponent can *potentially*
-    do or score as seen from the outside.
+    cards, promissory notes, secret objectives).  It is suitable for
+    representing what an opponent can *potentially* do or score as seen from
+    the outside.
+
+    ``component_action`` is included because many component action sources are
+    publicly visible: technologies with an Action-timing ability (e.g. Sling
+    Relay), faction agents, and faction abilities with Action timing.
     """
 
     player_id: str = Field(description="The player these options apply to.")
@@ -251,8 +255,9 @@ class PublicPlayerInfo(BaseModel):
         default_factory=list,
         description=(
             "Ordered list of publicly observable actions the player may legally take. "
-            "Does not include component_action as that requires knowledge of the "
-            "player's private action cards."
+            "Includes component_action when the player has not passed, because public "
+            "component action sources (technology action abilities, faction agents, "
+            "faction abilities) are observable by all players."
         ),
     )
     passed: bool = Field(
@@ -292,8 +297,10 @@ def get_public_player_info(
 
     Differences from :func:`get_player_options`:
 
-    * ``component_action`` is *not* included in the Action Phase because it
-      requires knowledge of the player's private action cards.
+    * ``component_action`` **is** included in the Action Phase.  Technologies
+      with an Action-timing ability (e.g. Sling Relay), faction agents, and
+      faction abilities with Action timing are publicly visible, so opponents
+      can observe that a player may have a component action available.
     * Scoring is evaluated only against **revealed public objectives** (those
       present in ``state.public_objectives``).  Secret objectives are excluded.
 
@@ -329,10 +336,11 @@ def get_public_player_info(
 
     base_opts = get_player_options(state, player_id)
 
-    # Exclude component_action: requires private action card knowledge.
-    public_actions = [
-        a for a in base_opts.available_actions if a != PlayerAction.COMPONENT_ACTION
-    ]
+    # component_action is included: public component action sources (technology
+    # action abilities, faction agents, faction abilities with Action timing) are
+    # observable by all players.  Private action cards are not modelled here and
+    # do not affect which actions are listed.
+    public_actions = list(base_opts.available_actions)
 
     # Scoring: evaluate only revealed public objectives.
     scoreable_points = 0

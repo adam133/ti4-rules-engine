@@ -292,7 +292,7 @@ Key differences from `get_player_options` / `score_points_available`:
 
 | Aspect | `get_player_options` | `get_public_player_info` |
 |---|---|---|
-| `component_action` | Included | **Excluded** (requires private action cards) |
+| `component_action` | Included | **Included** (public sources: tech action abilities, faction agents, faction abilities) |
 | Scoring objectives | Any list supplied by caller | **Only revealed public objectives** (`state.public_objectives`) |
 | Secret objectives | Evaluated if passed in | **Automatically excluded** |
 

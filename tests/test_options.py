@@ -215,10 +215,12 @@ class TestGetPublicPlayerInfo:
         info = get_public_player_info(game_state, "player_1")
         assert PlayerAction.PASS in info.available_actions
 
-    def test_component_action_excluded_in_action_phase(self, game_state: GameState) -> None:
+    def test_component_action_included_in_action_phase(self, game_state: GameState) -> None:
+        # component_action is included because public sources (tech action abilities,
+        # faction agents) are observable by opponents.
         game_state.phase = GamePhase.ACTION
         info = get_public_player_info(game_state, "player_1")
-        assert PlayerAction.COMPONENT_ACTION not in info.available_actions
+        assert PlayerAction.COMPONENT_ACTION in info.available_actions
 
     def test_passed_player_has_no_actions(self, game_state: GameState) -> None:
         game_state.phase = GamePhase.ACTION
@@ -370,7 +372,7 @@ class TestGetPublicPlayerInfo:
 
     def test_strategy_phase_no_component_action(self, game_state: GameState) -> None:
         # During strategy phase, component_action is not returned by get_player_options
-        # either, so the public filter makes no difference – still no component_action.
+        # at all (wrong phase), so it is not present in public info either.
         info = get_public_player_info(game_state, "player_1")
         assert PlayerAction.COMPONENT_ACTION not in info.available_actions
 
@@ -398,11 +400,13 @@ class TestGetAllOpponentsPublicInfo:
         for info in opponents.values():
             assert isinstance(info, PublicPlayerInfo)
 
-    def test_opponent_has_no_component_action(self, game_state: GameState) -> None:
+    def test_opponent_has_component_action(self, game_state: GameState) -> None:
+        # component_action is included for opponents because public sources
+        # (tech action abilities, faction agents) are observable.
         game_state.phase = GamePhase.ACTION
         opponents = get_all_opponents_public_info(game_state, "player_1")
         for info in opponents.values():
-            assert PlayerAction.COMPONENT_ACTION not in info.available_actions
+            assert PlayerAction.COMPONENT_ACTION in info.available_actions
 
     def test_passed_opponent_has_no_actions(self, game_state: GameState) -> None:
         game_state.phase = GamePhase.ACTION
