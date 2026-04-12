@@ -142,6 +142,21 @@ class PlayerState(BaseModel):
     scored_objectives: list[str] = Field(
         default_factory=list, description="IDs of objectives this player has scored."
     )
+    tactical_tokens: int = Field(
+        default=0,
+        ge=0,
+        description="Number of command tokens in the tactic zone of this player's command sheet.",
+    )
+    fleet_tokens: int = Field(
+        default=0,
+        ge=0,
+        description="Number of command tokens in the fleet pool of this player's command sheet.",
+    )
+    strategy_tokens: int = Field(
+        default=0,
+        ge=0,
+        description="Number of command tokens in the strategy zone of this player's command sheet.",
+    )
 
 
 class GameState(BaseModel):

@@ -363,3 +363,165 @@ class TestAsyncTI4GameDataSchema:
         data = {**SAMPLE_DATA, "lawsInPlay": law_objects}
         state = from_asyncti4(data)
         assert state.law_ids == ["minister_policy"]
+
+
+# ---------------------------------------------------------------------------
+# Dicecord / neutral-faction filtering
+# ---------------------------------------------------------------------------
+
+DICECORD_PLAYER: dict = {
+    "userName": "Dicecord",
+    "faction": "neutral",
+    "color": "aberration",
+    "totalVps": 0,
+    "scs": [],
+    "passed": False,
+    "tg": 0,
+    "commodities": 0,
+    "planets": [],
+    "exhaustedPlanets": [],
+    "techs": [],
+    "secretsScored": {},
+    "isSpeaker": False,
+    "active": False,
+    "acCount": 0,
+    "eliminated": False,
+}
+
+
+class TestDicecordFiltering:
+    def test_neutral_faction_player_excluded(self) -> None:
+        """Players with faction='neutral' (Dicecord) must be excluded from the analysis."""
+        data = {
+            **SAMPLE_DATA,
+            "playerData": [SAMPLE_PLAYER_1, SAMPLE_PLAYER_2, DICECORD_PLAYER],
+        }
+        state = from_asyncti4(data)
+        assert "Dicecord" not in state.players
+
+    def test_neutral_faction_not_in_turn_order(self) -> None:
+        data = {
+            **SAMPLE_DATA,
+            "playerData": [SAMPLE_PLAYER_1, SAMPLE_PLAYER_2, DICECORD_PLAYER],
+        }
+        state = from_asyncti4(data)
+        assert "Dicecord" not in state.turn_order.order
+
+    def test_non_neutral_players_still_present(self) -> None:
+        data = {
+            **SAMPLE_DATA,
+            "playerData": [SAMPLE_PLAYER_1, SAMPLE_PLAYER_2, DICECORD_PLAYER],
+        }
+        state = from_asyncti4(data)
+        assert "gokurohit" in state.players
+        assert "Rowdy" in state.players
+
+    def test_neutral_as_speaker_raises(self) -> None:
+        """If the only isSpeaker is neutral, we should still raise for missing speaker."""
+        data = {
+            **SAMPLE_DATA,
+            "playerData": [
+                {**SAMPLE_PLAYER_1, "isSpeaker": False},
+                {**SAMPLE_PLAYER_2, "isSpeaker": False},
+                {**DICECORD_PLAYER, "isSpeaker": True},
+            ],
+        }
+        with pytest.raises(ValueError, match="isSpeaker"):
+            from_asyncti4(data)
+
+
+# ---------------------------------------------------------------------------
+# Command token mapping
+# ---------------------------------------------------------------------------
+
+
+SAMPLE_PLAYER_WITH_TOKENS: dict = {
+    **SAMPLE_PLAYER_1,
+    "tacticalCC": 3,
+    "fleetCC": 2,
+    "strategicCC": 1,
+}
+
+
+class TestCommandTokenMapping:
+    def test_tactical_tokens_mapped(self) -> None:
+        data = {
+            **SAMPLE_DATA,
+            "playerData": [SAMPLE_PLAYER_WITH_TOKENS, SAMPLE_PLAYER_2],
+        }
+        state = from_asyncti4(data)
+        assert state.players["gokurohit"].tactical_tokens == 3
+
+    def test_fleet_tokens_mapped(self) -> None:
+        data = {
+            **SAMPLE_DATA,
+            "playerData": [SAMPLE_PLAYER_WITH_TOKENS, SAMPLE_PLAYER_2],
+        }
+        state = from_asyncti4(data)
+        assert state.players["gokurohit"].fleet_tokens == 2
+
+    def test_strategy_tokens_mapped(self) -> None:
+        data = {
+            **SAMPLE_DATA,
+            "playerData": [SAMPLE_PLAYER_WITH_TOKENS, SAMPLE_PLAYER_2],
+        }
+        state = from_asyncti4(data)
+        assert state.players["gokurohit"].strategy_tokens == 1
+
+    def test_default_tokens_are_zero(self) -> None:
+        # SAMPLE_PLAYER_1 has no token fields → should default to 0
+        state = from_asyncti4(SAMPLE_DATA)
+        assert state.players["gokurohit"].tactical_tokens == 0
+        assert state.players["gokurohit"].fleet_tokens == 0
+        assert state.players["gokurohit"].strategy_tokens == 0
+
+
+# ---------------------------------------------------------------------------
+# Tile unit data stored in GameState.extra
+# ---------------------------------------------------------------------------
+
+SAMPLE_TILE_UNIT_DATA: dict = {
+    "000": {"anomaly": False, "ccs": [], "planets": {"mecatol": {}}, "space": {}},
+    "101": {
+        "anomaly": False,
+        "ccs": ["royal"],
+        "planets": {},
+        "space": {
+            "royal": [{"entityId": "cv", "entityType": "unit", "count": 2}]
+        },
+    },
+    "102": {"anomaly": False, "ccs": [], "planets": {"jol": {}, "nar": {}}, "space": {}},
+    "201": {"anomaly": True, "ccs": [], "planets": {}, "space": {}},
+}
+
+
+class TestTileUnitDataInExtra:
+    def test_tile_unit_data_stored_in_extra(self) -> None:
+        data = {**SAMPLE_DATA, "tileUnitData": SAMPLE_TILE_UNIT_DATA}
+        state = from_asyncti4(data)
+        assert "tile_unit_data" in state.extra
+        assert state.extra["tile_unit_data"] == SAMPLE_TILE_UNIT_DATA
+
+    def test_player_colors_stored_in_extra(self) -> None:
+        data = {**SAMPLE_DATA, "tileUnitData": SAMPLE_TILE_UNIT_DATA}
+        state = from_asyncti4(data)
+        assert "player_colors" in state.extra
+        assert state.extra["player_colors"]["gokurohit"] == "royal"
+        assert state.extra["player_colors"]["Rowdy"] == "lime"
+
+    def test_neutral_color_not_in_player_colors(self) -> None:
+        data = {
+            **SAMPLE_DATA,
+            "tileUnitData": SAMPLE_TILE_UNIT_DATA,
+            "playerData": [SAMPLE_PLAYER_1, SAMPLE_PLAYER_2, DICECORD_PLAYER],
+        }
+        state = from_asyncti4(data)
+        # Dicecord's color ("aberration") must not appear in player_colors
+        assert "aberration" not in state.extra["player_colors"].values()
+        assert "Dicecord" not in state.extra["player_colors"]
+
+    def test_empty_tile_unit_data_when_absent(self) -> None:
+        # If the JSON has no tileUnitData key, the extra dict should still work
+        state = from_asyncti4(SAMPLE_DATA)
+        assert state.extra["tile_unit_data"] == {}
+

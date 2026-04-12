@@ -114,6 +114,21 @@ class AsyncTI4Player(BaseModel):
         description="Number of Action Cards in hand (IDs are not exposed).",
     )
     eliminated: bool = Field(default=False, description="True if the player has been eliminated.")
+    tacticalCC: int = Field(
+        default=0,
+        ge=0,
+        description="Number of command tokens in the player's tactic zone.",
+    )
+    fleetCC: int = Field(
+        default=0,
+        ge=0,
+        description="Number of command tokens in the player's fleet pool.",
+    )
+    strategicCC: int = Field(
+        default=0,
+        ge=0,
+        description="Number of command tokens in the player's strategy zone.",
+    )
 
 
 class AsyncTI4StrategyCard(BaseModel):
@@ -179,6 +194,21 @@ class AsyncTI4GameData(BaseModel):
     strategyCards: list[AsyncTI4StrategyCard] = Field(
         default_factory=list,
         description="Top-level strategy card metadata used to infer the current phase.",
+    )
+    tileUnitData: dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "Per-tile unit and command-counter data keyed by tile position string "
+            "(e.g. '211', '000', 'br').  Each value is a dict with 'space', 'planets', "
+            "'ccs', and 'anomaly' fields."
+        ),
+    )
+    tilePositions: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Map of tile positions to tile IDs, encoded as 'pos:tileId' strings "
+            "(e.g. '212:42').  Used to resolve anomaly subtypes and wormhole adjacency."
+        ),
     )
 
 
@@ -264,10 +294,14 @@ def from_asyncti4(data: dict[str, Any] | AsyncTI4GameData) -> GameState:
 
     phase = _infer_phase(data)
 
-    # Identify speaker and active player from per-player flags
+    # Identify speaker and active player from per-player flags.
+    # The "neutral" faction is used by the Dicecord dice-rolling service, which
+    # is not a real player and must be excluded from the analysis.
     speaker_id: str | None = None
     active_player_id: str | None = None
     for p in data.playerData:
+        if p.faction == "neutral":
+            continue
         if p.isSpeaker:
             speaker_id = p.userName
         if p.active:
@@ -279,10 +313,14 @@ def from_asyncti4(data: dict[str, Any] | AsyncTI4GameData) -> GameState:
             "Cannot determine the speaker."
         )
 
-    # Build player states keyed by userName, skipping eliminated players
+    # Build player states keyed by userName, skipping eliminated players and
+    # the Dicecord service account (faction == "neutral").
     players: dict[str, PlayerState] = {}
+    player_colors: dict[str, str] = {}
     for p in data.playerData:
         if p.eliminated:
+            continue
+        if p.faction == "neutral":
             continue
         players[p.userName] = PlayerState(
             player_id=p.userName,
@@ -302,7 +340,12 @@ def from_asyncti4(data: dict[str, Any] | AsyncTI4GameData) -> GameState:
             promissory_notes=[],
             # secretsScored is a dict; keys are the scored secret objective IDs
             scored_objectives=list(p.secretsScored.keys()),
+            tactical_tokens=p.tacticalCC,
+            fleet_tokens=p.fleetCC,
+            strategy_tokens=p.strategicCC,
         )
+        if p.color:
+            player_colors[p.userName] = p.color
 
     player_ids = list(players.keys())
 
@@ -322,4 +365,14 @@ def from_asyncti4(data: dict[str, Any] | AsyncTI4GameData) -> GameState:
         players=players,
         active_player_id=active_player_id,
         law_ids=data.lawsInPlay,
+        extra={
+            "player_colors": player_colors,
+            "tile_unit_data": data.tileUnitData,
+            "tile_positions": {
+                pos: tile_id
+                for entry in data.tilePositions
+                if ":" in entry
+                for pos, tile_id in [entry.split(":", 1)]
+            },
+        },
     )
