@@ -19,10 +19,13 @@ def _make_state(
     player_id: str = "player_1",
     *,
     controlled_planets: list[str] | None = None,
+    exhausted_planets: list[str] | None = None,
     researched_technologies: list[str] | None = None,
     scored_objectives: list[str] | None = None,
     victory_points: int = 0,
     extra: dict | None = None,
+    law_ids: list[str] | None = None,
+    extra_players: dict[str, PlayerState] | None = None,
 ) -> GameState:
     """Return a minimal GameState for scoring tests."""
     player = PlayerState(
@@ -30,17 +33,23 @@ def _make_state(
         faction_id="test_faction",
         victory_points=victory_points,
         controlled_planets=controlled_planets or [],
+        exhausted_planets=exhausted_planets or [],
         researched_technologies=researched_technologies or [],
         scored_objectives=scored_objectives or [],
     )
-    turn_order = TurnOrder(speaker_id=player_id, order=[player_id])
+    all_players: dict[str, PlayerState] = {player_id: player}
+    if extra_players:
+        all_players.update(extra_players)
+    all_player_ids = list(all_players.keys())
+    turn_order = TurnOrder(speaker_id=player_id, order=all_player_ids)
     return GameState(
         game_id="test-scoring",
         round_number=1,
         phase=GamePhase.STATUS,
         turn_order=turn_order,
-        players={player_id: player},
+        players=all_players,
         extra=extra or {},
+        law_ids=law_ids or [],
     )
 
 
@@ -50,6 +59,7 @@ def _make_obj(
     *,
     threshold: int = 1,
     secondary_threshold: int = 1,
+    trait: PlanetTrait | None = None,
     objective_type: ObjectiveType = ObjectiveType.STAGE_1,
     points: int = 1,
 ) -> Objective:
@@ -63,6 +73,7 @@ def _make_obj(
             condition_type=condition_type,
             threshold=threshold,
             secondary_threshold=secondary_threshold,
+            trait=trait,
         ),
     )
 
@@ -497,6 +508,219 @@ class TestControlNPlanetsOutsideHome:
         assert can_score_objective(obj, state, "player_1") is None
 
 
+class TestControlNPlanetsInOpponentHomeSystems:
+    def test_meets_threshold(self, planet_registry: dict[str, Planet]) -> None:
+        # jord is in sol_home (opponent), nar is in jol_nar_home (opponent)
+        # player_1 controls both opponent home planets
+        opponent_1 = PlayerState(
+            player_id="opponent_1", faction_id="sol", controlled_planets=[]
+        )
+        opponent_2 = PlayerState(
+            player_id="opponent_2", faction_id="jol_nar", controlled_planets=[]
+        )
+        state = _make_state(
+            controlled_planets=["jord", "nar"],
+            extra={"home_systems": {
+                "player_1": "player_home",
+                "opponent_1": "sol_home",
+                "opponent_2": "jol_nar_home",
+            }},
+            extra_players={"opponent_1": opponent_1, "opponent_2": opponent_2},
+        )
+        obj = _make_obj(
+            "conquer_the_weak",
+            ScoringConditionType.CONTROL_N_PLANETS_IN_OPPONENT_HOME_SYSTEMS,
+            threshold=1,
+        )
+        assert can_score_objective(obj, state, "player_1", planet_registry=planet_registry) is True
+
+    def test_below_threshold(self, planet_registry: dict[str, Planet]) -> None:
+        # Player controls no opponent home planets
+        opponent = PlayerState(
+            player_id="opponent_1", faction_id="sol", controlled_planets=[]
+        )
+        state = _make_state(
+            controlled_planets=["vefut_ii"],
+            extra={"home_systems": {
+                "player_1": "player_home",
+                "opponent_1": "sol_home",
+            }},
+            extra_players={"opponent_1": opponent},
+        )
+        obj = _make_obj(
+            "conquer_the_weak",
+            ScoringConditionType.CONTROL_N_PLANETS_IN_OPPONENT_HOME_SYSTEMS,
+            threshold=1,
+        )
+        assert (
+            can_score_objective(obj, state, "player_1", planet_registry=planet_registry) is False
+        )
+
+    def test_own_home_planets_not_counted(self, planet_registry: dict[str, Planet]) -> None:
+        # nar is in jol_nar_home which is player_1's own home system → should NOT count
+        state = _make_state(
+            controlled_planets=["nar"],
+            extra={"home_systems": {"player_1": "jol_nar_home"}},
+        )
+        obj = _make_obj(
+            "conquer_the_weak",
+            ScoringConditionType.CONTROL_N_PLANETS_IN_OPPONENT_HOME_SYSTEMS,
+            threshold=1,
+        )
+        assert (
+            can_score_objective(obj, state, "player_1", planet_registry=planet_registry) is False
+        )
+
+    def test_no_planet_registry_returns_none(self) -> None:
+        state = _make_state(controlled_planets=["jord"])
+        obj = _make_obj(
+            "conquer_the_weak",
+            ScoringConditionType.CONTROL_N_PLANETS_IN_OPPONENT_HOME_SYSTEMS,
+            threshold=1,
+        )
+        assert can_score_objective(obj, state, "player_1") is None
+
+    def test_no_home_systems_in_extra_returns_false(
+        self, planet_registry: dict[str, Planet]
+    ) -> None:
+        # No home_systems in extra → no opponent home planets known → count=0 → False
+        state = _make_state(controlled_planets=["jord"])
+        obj = _make_obj(
+            "conquer_the_weak",
+            ScoringConditionType.CONTROL_N_PLANETS_IN_OPPONENT_HOME_SYSTEMS,
+            threshold=1,
+        )
+        assert (
+            can_score_objective(obj, state, "player_1", planet_registry=planet_registry) is False
+        )
+
+
+class TestControlNPlanetsOfSpecificTrait:
+    def test_meets_threshold_cultural(self, planet_registry: dict[str, Planet]) -> None:
+        # abaddon is cultural
+        state = _make_state(controlled_planets=["abaddon", "mecatol_rex"])
+        obj = _make_obj(
+            "forge_an_alliance",
+            ScoringConditionType.CONTROL_N_PLANETS_OF_SPECIFIC_TRAIT,
+            threshold=1,
+            trait=PlanetTrait.CULTURAL,
+        )
+        assert can_score_objective(obj, state, "player_1", planet_registry=planet_registry) is True
+
+    def test_meets_threshold_industrial(self, planet_registry: dict[str, Planet]) -> None:
+        # lazar is industrial
+        state = _make_state(controlled_planets=["lazar", "abaddon"])
+        obj = _make_obj(
+            "fuel_the_war_machine",
+            ScoringConditionType.CONTROL_N_PLANETS_OF_SPECIFIC_TRAIT,
+            threshold=1,
+            trait=PlanetTrait.INDUSTRIAL,
+        )
+        assert can_score_objective(obj, state, "player_1", planet_registry=planet_registry) is True
+
+    def test_wrong_trait_not_counted(self, planet_registry: dict[str, Planet]) -> None:
+        # abaddon is cultural, not industrial
+        state = _make_state(controlled_planets=["abaddon", "lazar"])
+        obj = _make_obj(
+            "forge_an_alliance",
+            ScoringConditionType.CONTROL_N_PLANETS_OF_SPECIFIC_TRAIT,
+            threshold=2,
+            trait=PlanetTrait.CULTURAL,
+        )
+        assert (
+            can_score_objective(obj, state, "player_1", planet_registry=planet_registry) is False
+        )
+
+    def test_no_planet_registry_returns_none(self) -> None:
+        state = _make_state(controlled_planets=["abaddon"])
+        obj = _make_obj(
+            "forge_an_alliance",
+            ScoringConditionType.CONTROL_N_PLANETS_OF_SPECIFIC_TRAIT,
+            threshold=1,
+            trait=PlanetTrait.CULTURAL,
+        )
+        assert can_score_objective(obj, state, "player_1") is None
+
+    def test_no_trait_on_condition_returns_none(self, planet_registry: dict[str, Planet]) -> None:
+        state = _make_state(controlled_planets=["abaddon"])
+        obj = _make_obj(
+            "forge_an_alliance",
+            ScoringConditionType.CONTROL_N_PLANETS_OF_SPECIFIC_TRAIT,
+            threshold=1,
+            # trait not set → None
+        )
+        assert can_score_objective(obj, state, "player_1", planet_registry=planet_registry) is None
+
+
+class TestControlNPlanetsOfTraitOutsideHome:
+    def test_meets_threshold_hazardous(self, planet_registry: dict[str, Planet]) -> None:
+        # vefut_ii, sakulag, maakar_martyrs, starpoint are all hazardous and outside home
+        state = _make_state(
+            controlled_planets=["jord", "vefut_ii", "sakulag", "maakar_martyrs"],
+            extra={"home_systems": {"player_1": "sol_home"}},
+        )
+        obj = _make_obj(
+            "mine_rare_metals",
+            ScoringConditionType.CONTROL_N_PLANETS_OF_TRAIT_OUTSIDE_HOME,
+            threshold=3,
+            trait=PlanetTrait.HAZARDOUS,
+        )
+        assert can_score_objective(obj, state, "player_1", planet_registry=planet_registry) is True
+
+    def test_home_hazardous_planet_excluded(self, planet_registry: dict[str, Planet]) -> None:
+        # Only 2 hazardous outside home (home system has no hazardous in this case)
+        # vefut_ii and sakulag are hazardous; jord (home) is not hazardous
+        state = _make_state(
+            controlled_planets=["jord", "vefut_ii", "sakulag"],
+            extra={"home_systems": {"player_1": "sol_home"}},
+        )
+        obj = _make_obj(
+            "mine_rare_metals",
+            ScoringConditionType.CONTROL_N_PLANETS_OF_TRAIT_OUTSIDE_HOME,
+            threshold=3,
+            trait=PlanetTrait.HAZARDOUS,
+        )
+        assert (
+            can_score_objective(obj, state, "player_1", planet_registry=planet_registry) is False
+        )
+
+    def test_no_planet_registry_returns_none(self) -> None:
+        state = _make_state(
+            controlled_planets=["vefut_ii"],
+            extra={"home_systems": {"player_1": "sol_home"}},
+        )
+        obj = _make_obj(
+            "mine_rare_metals",
+            ScoringConditionType.CONTROL_N_PLANETS_OF_TRAIT_OUTSIDE_HOME,
+            threshold=1,
+            trait=PlanetTrait.HAZARDOUS,
+        )
+        assert can_score_objective(obj, state, "player_1") is None
+
+    def test_no_trait_on_condition_returns_none(self, planet_registry: dict[str, Planet]) -> None:
+        state = _make_state(controlled_planets=["vefut_ii"])
+        obj = _make_obj(
+            "mine_rare_metals",
+            ScoringConditionType.CONTROL_N_PLANETS_OF_TRAIT_OUTSIDE_HOME,
+            threshold=1,
+        )
+        assert can_score_objective(obj, state, "player_1", planet_registry=planet_registry) is None
+
+    def test_industrial_trait_outside_home(self, planet_registry: dict[str, Planet]) -> None:
+        # lazar is industrial and outside home
+        state = _make_state(
+            controlled_planets=["jord", "lazar"],
+            extra={"home_systems": {"player_1": "sol_home"}},
+        )
+        obj = _make_obj(
+            "hold_vast_reserves",
+            ScoringConditionType.CONTROL_N_PLANETS_OF_TRAIT_OUTSIDE_HOME,
+            threshold=1,
+            trait=PlanetTrait.INDUSTRIAL,
+        )
+        assert can_score_objective(obj, state, "player_1", planet_registry=planet_registry) is True
+
+
 # ---------------------------------------------------------------------------
 # Fleet / board-state conditions (all return None)
 # ---------------------------------------------------------------------------
@@ -568,6 +792,86 @@ class TestPlayerDeclared:
         state = _make_state()
         obj = _make_obj("custom_obj", ScoringConditionType.PLAYER_DECLARED)
         assert can_score_objective(obj, state, "player_1") is None
+
+
+class TestHaveNLawsInPlay:
+    def test_meets_threshold(self) -> None:
+        state = _make_state(law_ids=["law_1", "law_2", "law_3"])
+        obj = _make_obj("laws_obj", ScoringConditionType.HAVE_N_LAWS_IN_PLAY, threshold=3)
+        assert can_score_objective(obj, state, "player_1") is True
+
+    def test_below_threshold(self) -> None:
+        state = _make_state(law_ids=["law_1", "law_2"])
+        obj = _make_obj("laws_obj", ScoringConditionType.HAVE_N_LAWS_IN_PLAY, threshold=3)
+        assert can_score_objective(obj, state, "player_1") is False
+
+    def test_no_laws(self) -> None:
+        state = _make_state()
+        obj = _make_obj("laws_obj", ScoringConditionType.HAVE_N_LAWS_IN_PLAY, threshold=1)
+        assert can_score_objective(obj, state, "player_1") is False
+
+    def test_exceeds_threshold(self) -> None:
+        state = _make_state(law_ids=["law_1", "law_2", "law_3", "law_4"])
+        obj = _make_obj("laws_obj", ScoringConditionType.HAVE_N_LAWS_IN_PLAY, threshold=3)
+        assert can_score_objective(obj, state, "player_1") is True
+
+
+class TestHaveNInfluenceOnUnexhaustedPlanets:
+    def test_meets_threshold_all_unexhausted(self, planet_registry: dict[str, Planet]) -> None:
+        # mecatol_rex has 6 influence, jord has 2 influence → total 8
+        state = _make_state(controlled_planets=["mecatol_rex", "jord"])
+        obj = _make_obj(
+            "assert_empathy",
+            ScoringConditionType.HAVE_N_INFLUENCE_ON_UNEXHAUSTED_PLANETS,
+            threshold=8,
+        )
+        assert can_score_objective(obj, state, "player_1", planet_registry=planet_registry) is True
+
+    def test_exhausted_planets_excluded(self, planet_registry: dict[str, Planet]) -> None:
+        # mecatol_rex (6 inf) is exhausted, jord (2 inf) is not → total 2, threshold 8 → False
+        state = _make_state(
+            controlled_planets=["mecatol_rex", "jord"],
+            exhausted_planets=["mecatol_rex"],
+        )
+        obj = _make_obj(
+            "assert_empathy",
+            ScoringConditionType.HAVE_N_INFLUENCE_ON_UNEXHAUSTED_PLANETS,
+            threshold=8,
+        )
+        assert (
+            can_score_objective(obj, state, "player_1", planet_registry=planet_registry) is False
+        )
+
+    def test_below_threshold(self, planet_registry: dict[str, Planet]) -> None:
+        state = _make_state(controlled_planets=["jord"])  # 2 influence
+        obj = _make_obj(
+            "assert_empathy",
+            ScoringConditionType.HAVE_N_INFLUENCE_ON_UNEXHAUSTED_PLANETS,
+            threshold=10,
+        )
+        assert (
+            can_score_objective(obj, state, "player_1", planet_registry=planet_registry) is False
+        )
+
+    def test_no_planet_registry_returns_none(self) -> None:
+        state = _make_state(controlled_planets=["mecatol_rex"])
+        obj = _make_obj(
+            "assert_empathy",
+            ScoringConditionType.HAVE_N_INFLUENCE_ON_UNEXHAUSTED_PLANETS,
+            threshold=6,
+        )
+        assert can_score_objective(obj, state, "player_1") is None
+
+    def test_no_controlled_planets(self, planet_registry: dict[str, Planet]) -> None:
+        state = _make_state()
+        obj = _make_obj(
+            "assert_empathy",
+            ScoringConditionType.HAVE_N_INFLUENCE_ON_UNEXHAUSTED_PLANETS,
+            threshold=1,
+        )
+        assert (
+            can_score_objective(obj, state, "player_1", planet_registry=planet_registry) is False
+        )
 
 
 # ---------------------------------------------------------------------------

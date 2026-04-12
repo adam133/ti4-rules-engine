@@ -175,6 +175,40 @@ def can_score_objective(
         )
         return outside >= cond.threshold
 
+    if ct == ScoringConditionType.CONTROL_N_PLANETS_IN_OPPONENT_HOME_SYSTEMS:
+        if planet_registry is None:
+            return None
+        opponent_home_planets = _opponent_home_system_planet_ids(state, player_id, planet_registry)
+        count = sum(
+            1
+            for pid in player.controlled_planets
+            if pid in opponent_home_planets
+        )
+        return count >= cond.threshold
+
+    if ct == ScoringConditionType.CONTROL_N_PLANETS_OF_SPECIFIC_TRAIT:
+        if planet_registry is None or cond.trait is None:
+            return None
+        count = sum(
+            1
+            for pid in player.controlled_planets
+            if pid in planet_registry and planet_registry[pid].trait == cond.trait
+        )
+        return count >= cond.threshold
+
+    if ct == ScoringConditionType.CONTROL_N_PLANETS_OF_TRAIT_OUTSIDE_HOME:
+        if planet_registry is None or cond.trait is None:
+            return None
+        home_planets = _home_system_planet_ids(state, player_id, planet_registry)
+        count = sum(
+            1
+            for pid in player.controlled_planets
+            if pid not in home_planets
+            and pid in planet_registry
+            and planet_registry[pid].trait == cond.trait
+        )
+        return count >= cond.threshold
+
     # ------------------------------------------------------------------
     # Fleet / board-state conditions  (cannot evaluate without fleet data)
     # ------------------------------------------------------------------
@@ -209,6 +243,20 @@ def can_score_objective(
 
     if ct == ScoringConditionType.HAVE_N_VICTORY_POINTS:
         return player.victory_points >= cond.threshold
+
+    if ct == ScoringConditionType.HAVE_N_LAWS_IN_PLAY:
+        return len(state.law_ids) >= cond.threshold
+
+    if ct == ScoringConditionType.HAVE_N_INFLUENCE_ON_UNEXHAUSTED_PLANETS:
+        if planet_registry is None:
+            return None
+        exhausted = set(player.exhausted_planets)
+        total_influence = sum(
+            planet_registry[pid].influence
+            for pid in player.controlled_planets
+            if pid in planet_registry and pid not in exhausted
+        )
+        return total_influence >= cond.threshold
 
     if ct == ScoringConditionType.PLAYER_DECLARED:
         return None
@@ -294,4 +342,30 @@ def _home_system_planet_ids(
         pid
         for pid, planet in planet_registry.items()
         if planet.system_id == home_system_id
+    }
+
+
+def _opponent_home_system_planet_ids(
+    state: GameState,
+    player_id: str,
+    planet_registry: dict[str, Planet],
+) -> set[str]:
+    """Return the set of planet IDs in any opponent's home system.
+
+    Reads ``state.extra["home_systems"]`` (a mapping of ``player_id → system_id``)
+    and returns all planets whose ``system_id`` matches any opponent's home system.
+    If no home-system data is available an empty set is returned.
+    """
+    home_systems: dict[str, str] = state.extra.get("home_systems", {})
+    opponent_system_ids = {
+        system_id
+        for pid, system_id in home_systems.items()
+        if pid != player_id
+    }
+    if not opponent_system_ids:
+        return set()
+    return {
+        pid
+        for pid, planet in planet_registry.items()
+        if planet.system_id in opponent_system_ids
     }

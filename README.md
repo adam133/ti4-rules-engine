@@ -491,7 +491,12 @@ total_vp = score_points_available(
 | `control_n_planets_outside_home` | ✅ Yes | Requires `planet_registry`; home system from `state.extra["home_systems"][player_id]` |
 | `control_n_legendary_planets` | ✅ Yes | Requires `planet_registry` |
 | `control_mecatol_rex` | ✅ Yes | Checks `controlled_planets` for `"mecatol_rex"` |
+| `control_n_planets_in_opponent_home_systems` | ✅ Yes | Requires `planet_registry`; opponent home systems from `state.extra["home_systems"]` |
+| `control_n_planets_of_specific_trait` | ✅ Yes | Requires `planet_registry`; trait specified on `ScoringCondition.trait` |
+| `control_n_planets_of_trait_outside_home` | ✅ Yes | Requires `planet_registry`; trait from `ScoringCondition.trait`; home system from `state.extra["home_systems"][player_id]` |
 | `have_n_victory_points` | ✅ Yes | Checks `PlayerState.victory_points` |
+| `have_n_laws_in_play` | ✅ Yes | Checks `len(state.law_ids)` |
+| `have_n_influence_on_unexhausted_planets` | ✅ Yes | Requires `planet_registry`; sums influence of unexhausted controlled planets |
 | `ships_in_n_systems_adjacent_mecatol` | ⚠️ `None` | Requires fleet position data |
 | `ships_in_n_opponent_home_systems` | ⚠️ `None` | Requires fleet position data |
 | `have_n_non_fighter_ships_in_1_system` | ⚠️ `None` | Requires fleet position data |

@@ -33,6 +33,8 @@ from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
+from models.planet import PlanetTrait
+
 
 class ObjectiveType(StrEnum):
     """The type/stage of a TI4 scoring objective."""
@@ -64,7 +66,7 @@ class ScoringConditionType(StrEnum):
       :class:`~models.state.PlayerState`; evaluation returns ``None``.
     * **Spend** – require tracking of resources/influence/tokens spent during the round;
       evaluation returns ``None``.
-    * **Special** – directly evaluable from core state fields.
+    * **Special** – directly evaluable from core state fields (e.g. VP, laws in play).
     * **Player-declared** – cannot be auto-evaluated; the player must confirm.
     """
 
@@ -99,6 +101,23 @@ class ScoringConditionType(StrEnum):
 
     CONTROL_MECATOL_REX = "control_mecatol_rex"
     """Control Mecatol Rex (the Galactic Council's home planet)."""
+
+    CONTROL_N_PLANETS_IN_OPPONENT_HOME_SYSTEMS = "control_n_planets_in_opponent_home_systems"
+    """Control *threshold* planets that are in other players' home systems.
+
+    Uses ``state.extra["home_systems"]`` (a mapping of ``player_id → system_id``) and
+    a planet registry to identify which controlled planets lie in opponent home systems.
+    """
+
+    CONTROL_N_PLANETS_OF_SPECIFIC_TRAIT = "control_n_planets_of_specific_trait"
+    """Control *threshold* planets that have the specific trait given by :attr:`ScoringCondition.trait`."""
+
+    CONTROL_N_PLANETS_OF_TRAIT_OUTSIDE_HOME = "control_n_planets_of_trait_outside_home"
+    """Control *threshold* planets with the specific trait given by :attr:`ScoringCondition.trait`,
+    all outside the player's home system.
+
+    Uses ``state.extra["home_systems"]`` and a planet registry.
+    """
 
     # ------------------------------------------------------------------
     # Fleet / board-state conditions  (evaluation returns ``None``)
@@ -151,6 +170,19 @@ class ScoringConditionType(StrEnum):
     HAVE_N_VICTORY_POINTS = "have_n_victory_points"
     """Hold *threshold* or more victory points."""
 
+    HAVE_N_LAWS_IN_PLAY = "have_n_laws_in_play"
+    """There are *threshold* or more laws currently in play.
+
+    Evaluable directly from :attr:`~models.state.GameState.law_ids`.
+    """
+
+    HAVE_N_INFLUENCE_ON_UNEXHAUSTED_PLANETS = "have_n_influence_on_unexhausted_planets"
+    """Have *threshold* or more total influence on unexhausted planets the player controls.
+
+    Requires a planet registry; sums the :attr:`~models.planet.Planet.influence` of every
+    controlled planet that is **not** in :attr:`~models.state.PlayerState.exhausted_planets`.
+    """
+
     PLAYER_DECLARED = "player_declared"
     """Condition cannot be auto-evaluated; the player must confirm manually."""
 
@@ -165,6 +197,9 @@ class ScoringCondition(BaseModel):
     * ``secondary_threshold`` – a second numeric requirement used by compound conditions
       (e.g. own **2** techs in each of **2** colors → ``threshold=2``,
       ``secondary_threshold=2``).
+    * ``trait`` – the specific :class:`~models.planet.PlanetTrait` required by
+      :attr:`~ScoringConditionType.CONTROL_N_PLANETS_OF_SPECIFIC_TRAIT` and
+      :attr:`~ScoringConditionType.CONTROL_N_PLANETS_OF_TRAIT_OUTSIDE_HOME`.
     """
 
     condition_type: ScoringConditionType = Field(
@@ -181,6 +216,13 @@ class ScoringCondition(BaseModel):
         description=(
             "Secondary threshold for compound conditions "
             "(e.g. own 2 techs in each of 2 colors → threshold=2, secondary_threshold=2)."
+        ),
+    )
+    trait: PlanetTrait | None = Field(
+        default=None,
+        description=(
+            "Required planet trait for trait-specific conditions "
+            "(CONTROL_N_PLANETS_OF_SPECIFIC_TRAIT and CONTROL_N_PLANETS_OF_TRAIT_OUTSIDE_HOME)."
         ),
     )
 
