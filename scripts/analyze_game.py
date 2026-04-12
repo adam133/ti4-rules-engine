@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import functools
 import json
+import pathlib
 import sys
 import urllib.request
 from collections import deque
@@ -27,11 +28,9 @@ S3_URL_TEMPLATE = (
     "https://s3.us-east-1.amazonaws.com/asyncti4.com/webdata/{game}/{game}.json"
 )
 
-# URL for the AsyncTI4 bot's technology data (all tech aliases and full names).
-_ASYNCTI4_TECH_URL = (
-    "https://raw.githubusercontent.com/AsyncTI4/TI4_map_generator_bot"
-    "/master/src/main/resources/data/technologies/pok.json"
-)
+# Path to the bundled technology data file (data/technologies.json at repo root).
+_DATA_DIR = pathlib.Path(__file__).parent.parent / "data"
+_TECH_DATA_FILE = _DATA_DIR / "technologies.json"
 
 # ---------------------------------------------------------------------------
 # Hex-grid adjacency
@@ -183,39 +182,41 @@ def _build_movement_context(
                     if other != pos:
                         wormhole_adjacency.setdefault(pos, set()).add(other)
 
+
     return tile_type_map, {k: frozenset(v) for k, v in wormhole_adjacency.items()}
 
 
 # ---------------------------------------------------------------------------
-# Static data: fetch tech names from AsyncTI4 GitHub
+# Static data: technology names (ported from AsyncTI4 bot)
 # ---------------------------------------------------------------------------
 
 
 def fetch_tech_names() -> dict[str, str]:
-    """Fetch alias→full-name mapping for all technologies from the AsyncTI4 bot.
+    """Load alias→full-name mapping for all technologies from the bundled data file.
 
     Returns a dict mapping the short alias used in game exports (e.g. ``"amd"``)
-    to the full display name (e.g. ``"Antimass Deflectors"``).  Falls back to an
-    empty dict if the network request fails so the caller can display raw aliases.
-    Results are cached after the first successful call.
+    to the full display name (e.g. ``"Antimass Deflectors"``).  The data is
+    ported from the AsyncTI4 bot and stored in ``data/technologies.json``.
+    Falls back to an empty dict if the file cannot be read.
+    Results are cached after the first call.
     """
-    return _fetch_tech_names_cached()
+    return _load_tech_names_cached()
 
 
 @functools.cache
-def _fetch_tech_names_cached() -> dict[str, str]:
+def _load_tech_names_cached() -> dict[str, str]:
     """Cached implementation of :func:`fetch_tech_names`."""
     try:
-        with urllib.request.urlopen(_ASYNCTI4_TECH_URL, timeout=10) as resp:  # noqa: S310
-            techs: list[dict[str, Any]] = json.loads(resp.read().decode("utf-8"))
+        with _TECH_DATA_FILE.open(encoding="utf-8") as fh:
+            techs: list[dict[str, Any]] = json.load(fh)
         return {
             t["alias"]: t["name"]
             for t in techs
             if isinstance(t, dict) and "alias" in t and "name" in t
         }
-    except (URLError, json.JSONDecodeError, KeyError, TypeError) as exc:
+    except (OSError, json.JSONDecodeError, KeyError, TypeError) as exc:
         print(
-            f"Warning: could not fetch tech names from AsyncTI4 GitHub ({exc!r}); "
+            f"Warning: could not load tech names from {_TECH_DATA_FILE} ({exc!r}); "
             "showing raw tech aliases.",
             file=sys.stderr,
         )
