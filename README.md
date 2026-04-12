@@ -233,6 +233,69 @@ The complete set of `PlayerAction` values:
 | `resolve_outcome` | Agenda | 4 – Resolve Outcome | Speaker only |
 | `ready_planets` | Agenda | After both agendas | Always |
 
+## Opponent Public Info
+
+To evaluate what an opponent can *potentially* do or score using only publicly
+visible information (no action cards, promissory notes, or secret objectives),
+use `get_public_player_info` and `get_all_opponents_public_info`:
+
+```python
+from engine import get_public_player_info, get_all_opponents_public_info
+from engine.options import PlayerAction
+
+# --- Single opponent ---
+info = get_public_player_info(state, player_id="bob")
+print(info.available_actions)
+# action phase: [tactical_action, strategic_action, pass]
+# component_action is NOT included – it requires private action card knowledge
+
+# --- All opponents at once ---
+opponents = get_all_opponents_public_info(state, viewing_player_id="alice")
+for pid, opp_info in opponents.items():
+    print(pid, opp_info.available_actions)
+```
+
+`get_public_player_info` accepts optional registries and a list of objectives
+to also evaluate each opponent's **scoring potential** from revealed public
+objectives:
+
+```python
+from engine import get_all_opponents_public_info
+from models.objective import Objective, ObjectiveType, ScoringCondition, ScoringConditionType
+
+expand_borders = Objective(
+    id="expand_borders",
+    name="Expand Borders",
+    objective_type=ObjectiveType.STAGE_1,
+    points=1,
+    description="Control 6 planets outside of your home system.",
+    condition=ScoringCondition(
+        condition_type=ScoringConditionType.CONTROL_N_PLANETS_OUTSIDE_HOME,
+        threshold=6,
+    ),
+)
+
+# state.public_objectives must contain "expand_borders" for it to be evaluated
+opponents = get_all_opponents_public_info(
+    state,
+    viewing_player_id="alice",
+    objectives=[expand_borders, ...],
+    planet_registry=planet_registry,
+    tech_registry=tech_registry,
+)
+
+for pid, opp in opponents.items():
+    print(f"{pid} can score {opp.scoreable_points} VP from: {opp.scoreable_objective_ids}")
+```
+
+Key differences from `get_player_options` / `score_points_available`:
+
+| Aspect | `get_player_options` | `get_public_player_info` |
+|---|---|---|
+| `component_action` | Included | **Excluded** (requires private action cards) |
+| Scoring objectives | Any list supplied by caller | **Only revealed public objectives** (`state.public_objectives`) |
+| Secret objectives | Evaluated if passed in | **Automatically excluded** |
+
 ## Movement Range Evaluation
 
 The `engine.movement` module evaluates which systems a fleet can reach in a
@@ -505,3 +568,8 @@ all_objectives = reg.get_by_type(Objective)
 - [x] Planet conditions fully evaluated from `PlayerState.controlled_planets` + planet registry (trait, tech skip, legendary, Mecatol Rex, outside home system)
 - [x] Fleet/board conditions and spend conditions return `None` with a clear contract for manual player confirmation
 - [x] `ComponentRegistry.register_objective` – objectives are first-class registered components
+
+### Phase 8 – Opponent Public Info ✅
+- [x] `PublicPlayerInfo` model – publicly observable actions and scoring potential for any player
+- [x] `get_public_player_info` – returns `PublicPlayerInfo` for a player using only public state: excludes `component_action` (requires private action cards), scores only against revealed public objectives (`state.public_objectives`)
+- [x] `get_all_opponents_public_info` – convenience wrapper returning a `{player_id → PublicPlayerInfo}` mapping for every opponent of the viewing player
