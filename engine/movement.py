@@ -171,7 +171,7 @@ def get_reachable_systems(
             if neighbor.anomaly == AnomalyType.SUPERNOVA:
                 continue
 
-            # Moving into a neighbour costs 1 movement point
+            # Moving into a neighbor costs 1 movement point
             new_remaining = remaining - 1
 
             # Gravity Rift bonus: entering a gravity rift grants +1 movement,
