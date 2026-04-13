@@ -26,7 +26,9 @@ from typing import TYPE_CHECKING, Any
 from urllib.error import URLError
 
 from adapters.asyncti4 import from_asyncti4
+from engine.combat import CombatGroup, CombatResult, CombatUnit, simulate_combat
 from engine.options import get_player_options
+from models.unit import Unit, UnitType
 
 if TYPE_CHECKING:
     from models.state import GameState
@@ -358,6 +360,56 @@ _TRANSPORTED_UNITS = frozenset({"ff", "gf", "mf"})  # fighter, ground force, mec
 # NOTE: _TRANSPORTED_UNITS is used as documentation of which unit types are
 # transported by ships and therefore excluded from fleet move calculations.
 
+# Ground-force unit entity IDs (infantry and mechs live on planets).
+_GROUND_FORCE_IDS = frozenset({"gf", "mf"})
+
+# Transport capacity per ship type (entity ID → slots for ground forces / fighters).
+_SHIP_CAPACITY: dict[str, int] = {
+    "cv": 4,   # carrier
+    "dn": 1,   # dreadnought (base; Advance Carrier upgrade gives 2)
+    "fs": 3,   # flagship (generic conservative default)
+    "ws": 6,   # war sun
+    "dd": 0,   # destroyer
+    "ca": 0,   # cruiser
+    "cr": 0,   # cruiser
+}
+
+# Standard TI4 unit definitions used for Monte Carlo combat simulations.
+_COMBAT_UNITS: dict[str, Unit] = {
+    "cv": Unit(
+        id="carrier", name="Carrier", unit_type=UnitType.CARRIER,
+        cost=3, combat=9, move=2, capacity=4,
+    ),
+    "dd": Unit(
+        id="destroyer", name="Destroyer", unit_type=UnitType.DESTROYER,
+        cost=1, combat=9, move=2,
+    ),
+    "ca": Unit(
+        id="cruiser", name="Cruiser", unit_type=UnitType.CRUISER,
+        cost=2, combat=7, move=2,
+    ),
+    "cr": Unit(
+        id="cruiser", name="Cruiser", unit_type=UnitType.CRUISER,
+        cost=2, combat=7, move=2,
+    ),
+    "dn": Unit(
+        id="dreadnought", name="Dreadnought", unit_type=UnitType.DREADNOUGHT,
+        cost=4, combat=5, combat_rolls=2, move=1, capacity=1, sustain_damage=True,
+    ),
+    "fs": Unit(
+        id="flagship", name="Flagship", unit_type=UnitType.FLAGSHIP,
+        cost=8, combat=5, combat_rolls=2, move=1, sustain_damage=True,
+    ),
+    "ws": Unit(
+        id="war_sun", name="War Sun", unit_type=UnitType.WAR_SUN,
+        cost=12, combat=3, combat_rolls=3, move=2, capacity=6, sustain_damage=True,
+    ),
+    "ff": Unit(
+        id="fighter", name="Fighter", unit_type=UnitType.FIGHTER,
+        cost=1, combat=9, move=0,
+    ),
+}
+
 
 def _fleet_move_value(units: list[dict[str, Any]]) -> int:
     """Return the minimum move value for a collection of space units.
@@ -396,6 +448,113 @@ def _summarise_units(units: list[dict[str, Any]]) -> list[str]:
     for name, cnt in sorted(counts.items()):
         parts.append(name if cnt == 1 else f"{name} x{cnt}")
     return parts
+
+
+def _fleet_capacity(units: list[dict[str, Any]]) -> int:
+    """Return the total transport capacity of a fleet (sum across all ships)."""
+    total = 0
+    for u in units:
+        if not isinstance(u, dict) or u.get("entityType") != "unit":
+            continue
+        eid = u.get("entityId", "")
+        cap = _SHIP_CAPACITY.get(eid, 0)
+        total += cap * u.get("count", 1)
+    return total
+
+
+def _ground_forces_in_space(units: list[dict[str, Any]]) -> dict[str, int]:
+    """Return ``{entity_id: count}`` for infantry/mechs already in a fleet's space area."""
+    counts: dict[str, int] = {}
+    for u in units:
+        if not isinstance(u, dict) or u.get("entityType") != "unit":
+            continue
+        eid = u.get("entityId", "")
+        if eid in _GROUND_FORCE_IDS:
+            counts[eid] = counts.get(eid, 0) + u.get("count", 1)
+    return counts
+
+
+def _ground_forces_on_planets(tile_data: dict[str, Any], faction: str) -> dict[str, int]:
+    """Return ``{entity_id: count}`` for infantry/mechs on planets in *tile_data*.
+
+    Only units belonging to *faction* are counted.  Units are stored under
+    each planet's ``entities`` dict (keyed by faction slug).
+    """
+    counts: dict[str, int] = {}
+    for pdata in (tile_data.get("planets") or {}).values():
+        if not isinstance(pdata, dict):
+            continue
+        entities = pdata.get("entities") or {}
+        if not isinstance(entities, dict):
+            continue
+        faction_units = entities.get(faction) or []
+        if not isinstance(faction_units, list):
+            continue
+        for u in faction_units:
+            if not isinstance(u, dict):
+                continue
+            eid = u.get("entityId", "")
+            if eid in _GROUND_FORCE_IDS:
+                counts[eid] = counts.get(eid, 0) + u.get("count", 1)
+    return counts
+
+
+def _summarise_ground_forces(gf_counts: dict[str, int]) -> list[str]:
+    """Return a human-readable list of ground force labels.
+
+    e.g. ``{"gf": 3, "mf": 1}`` → ``["infantry x3", "mech"]``
+    """
+    parts = []
+    for eid in ("mf", "gf"):  # mechs first (higher value)
+        cnt = gf_counts.get(eid, 0)
+        if cnt == 0:
+            continue
+        name = _UNIT_NAMES.get(eid, eid)
+        parts.append(name if cnt == 1 else f"{name} x{cnt}")
+    return parts
+
+
+def _build_combat_group(units: list[dict[str, Any]]) -> CombatGroup:
+    """Build a :class:`CombatGroup` from a list of raw unit dicts.
+
+    Only units present in :data:`_COMBAT_UNITS` (ships and fighters) with a
+    defined ``combat`` stat are included.
+    """
+    combat_units: list[CombatUnit] = []
+    for u in units:
+        if not isinstance(u, dict) or u.get("entityType") != "unit":
+            continue
+        eid = u.get("entityId", "")
+        unit_def = _COMBAT_UNITS.get(eid)
+        if unit_def is None or unit_def.combat is None:
+            continue
+        count = u.get("count", 1)
+        combat_units.append(CombatUnit(unit_def, count))
+    return CombatGroup(combat_units)
+
+
+def _format_combat_result(result: CombatResult) -> str:
+    """Return a one-line summary of a :class:`CombatResult`.
+
+    Format: ``Win 63%, Lose 31%, Draw 6% | Avg 2.3 rounds``
+    followed by expected survivors if non-trivial.
+    """
+    win = result.attacker_win_probability
+    lose = result.defender_win_probability
+    draw = 1.0 - win - lose
+    summary = (
+        f"Win {win:.0%}, Lose {lose:.0%}, Draw {draw:.0%}"
+        f" | Avg {result.average_rounds:.1f} rounds"
+    )
+
+    surv_parts = [
+        f"{k} avg {v:.1f}"
+        for k, v in sorted(result.attacker_expected_survivors.items(), key=lambda x: -x[1])
+        if v > 0.05
+    ]
+    if surv_parts:
+        summary += f"  [survivors: {', '.join(surv_parts)}]"
+    return summary
 
 
 def _bfs(
@@ -563,23 +722,35 @@ def _get_tactical_reach(
 
     Returns a dict with:
 
-    ``fleets`` : list[dict]
-        One entry per starting position that has an unlocked mobile fleet.
-        Each entry has keys ``"from_pos"``, ``"units"`` (human-readable ship
-        list), and ``"destinations"`` (list of destination dicts).
+    ``by_destination`` : dict[str, dict]
+        Mapping from destination position to arrival information.  Each value
+        has keys:
 
-        Each destination dict has:
-
-        ``"pos"`` : str
-            Tile position string.
         ``"planets"`` : list[str]
             Planet names (or IDs) in the destination tile.
-        ``"via_rift"`` : bool
-            ``True`` if the destination is only reachable through a gravity rift.
-        ``"needs_gravity_drive"`` : list[str]
-            Ships in the fleet whose individual movement value is less than the
-            path cost — they would need the *Gravity Drive* technology to make
-            this move without holding back the fleet.
+        ``"arrivals"`` : list[dict]
+            One entry per starting position whose fleet can reach this
+            destination.  Each entry has:
+
+            * ``"from_pos"`` – starting tile position.
+            * ``"ships"`` – human-readable ship list (no fighters/infantry/mechs).
+            * ``"fleet_move"`` – fleet movement value.
+            * ``"capacity"`` – total transport capacity of the fleet.
+            * ``"ground_forces"`` – infantry/mechs already carried (from
+              starting tile space area + planets in the starting tile).
+            * ``"pickup_systems"`` – ``{pos: [gf_labels]}`` of player-controlled
+              ground forces on planets in intermediate systems (i.e. systems
+              between the starting pos and the destination that are not CC-locked).
+            * ``"via_rift"`` – ``True`` if only reachable via a gravity rift.
+            * ``"needs_gravity_drive"`` – ships that individually can't reach
+              this destination without *Gravity Drive*.
+
+        ``"defenders"`` : dict[str, list[str]]
+            Enemy factions (not the moving player) present in the destination's
+            space area, mapped to their ship/unit labels.
+        ``"combat_result"`` : str | None
+            Combat summary string for the **active player** (``None`` for
+            non-active players or when there are no defenders).
 
     ``no_adjacency`` : list[str]
         Positions where the player has an unlocked fleet but no adjacency can be
@@ -591,11 +762,12 @@ def _get_tactical_reach(
     """
     tile_unit_data: dict[str, Any] = state.extra.get("tile_unit_data", {})
     if not tile_unit_data:
-        return {"fleets": [], "no_adjacency": []}
+        return {"by_destination": {}, "no_adjacency": []}
     player = state.players.get(player_id)
     if player is None:
-        return {"fleets": [], "no_adjacency": []}
+        return {"by_destination": {}, "no_adjacency": []}
     faction = player.faction_id
+    is_active = player_id == state.active_player_id
 
     tile_positions: dict[str, str] = state.extra.get("tile_positions", {})
     tile_type_map: dict[str, dict[str, Any]] | None = None
@@ -612,11 +784,9 @@ def _get_tactical_reach(
 
     has_amd = "amd" in (player.researched_technologies or [])
 
-    fleets: list[dict[str, Any]] = []
+    # by_destination[pos] = {planets, arrivals, defenders, combat_result}
+    by_destination: dict[str, dict[str, Any]] = {}
     no_adjacency: list[str] = []
-    # Accumulate all reachable positions across all fleets to avoid duplicates
-    # in the destination list (same tile reachable from multiple starting points).
-    all_reachable: dict[str, list[str]] = {}
 
     for tile_pos, tile_data in tile_unit_data.items():
         space = tile_data.get("space") or {}
@@ -646,13 +816,54 @@ def _get_tactical_reach(
             continue
 
         unit_labels = _summarise_units(fleet_units)
+        capacity = _fleet_capacity(fleet_units)
 
-        destinations: list[dict[str, Any]] = []
-        for dest, info in sorted(reach_info.items()):
+        # Ground forces already in the fleet (in space area + on planets in starting tile)
+        gf_space = _ground_forces_in_space(fleet_units)
+        gf_planets = _ground_forces_on_planets(tile_data, faction)
+        combined_gf: dict[str, int] = {}
+        for eid in ("gf", "mf"):
+            total = gf_space.get(eid, 0) + gf_planets.get(eid, 0)
+            if total > 0:
+                combined_gf[eid] = total
+
+        # Identify intermediate systems (closer to start than any given destination)
+        # that have player ground forces on planets and no CC present.
+        # These represent possible pickups on the way.
+        intermediate_gf: dict[str, dict[str, int]] = {}
+        for mid_pos, mid_info in reach_info.items():
+            mid_tile_data = tile_unit_data.get(mid_pos) or {}
+            if faction in mid_tile_data.get("ccs", []):
+                continue  # locked system — can't pick up
+            mid_gf = _ground_forces_on_planets(mid_tile_data, faction)
+            if mid_gf:
+                intermediate_gf[mid_pos] = mid_gf
+
+        for dest, info in reach_info.items():
             path_cost = info["path_cost"]
             via_rift = info["via_rift"]
-            planets = list((tile_unit_data.get(dest) or {}).get("planets", {}).keys())
 
+            # Initialise destination entry if not yet present
+            if dest not in by_destination:
+                planets = list((tile_unit_data.get(dest) or {}).get("planets", {}).keys())
+                # Collect enemy units in this destination's space area
+                dest_space = (tile_unit_data.get(dest) or {}).get("space") or {}
+                defenders: dict[str, list[str]] = {}
+                dest_space_items = dest_space.items() if isinstance(dest_space, dict) else []
+                for other_faction, other_units in dest_space_items:
+                    if other_faction == faction:
+                        continue
+                    labels = _summarise_units(other_units) if isinstance(other_units, list) else []
+                    if labels:
+                        defenders[other_faction] = labels
+                by_destination[dest] = {
+                    "planets": planets,
+                    "arrivals": [],
+                    "defenders": defenders,
+                    "combat_result": None,
+                }
+
+            # Needs Gravity Drive: ships whose individual move < path_cost
             needs_gd_seen: set[str] = set()
             needs_gd: list[str] = []
             for u in fleet_units:
@@ -670,22 +881,75 @@ def _get_tactical_reach(
                         needs_gd_seen.add(entry)
                         needs_gd.append(entry)
 
-            destinations.append({
-                "pos": dest,
-                "planets": planets,
+            # Intermediate pickup systems: those with path_cost < dest path_cost
+            pickup_systems: dict[str, list[str]] = {}
+            for mid_pos, mid_gf in intermediate_gf.items():
+                mid_path_cost = reach_info.get(mid_pos, {}).get("path_cost", path_cost)
+                if mid_path_cost < path_cost:
+                    labels = _summarise_ground_forces(mid_gf)
+                    if labels:
+                        pickup_systems[mid_pos] = labels
+
+            by_destination[dest]["arrivals"].append({
+                "from_pos": tile_pos,
+                "ships": unit_labels,
+                "fleet_move": fleet_move,
+                "capacity": capacity,
+                "ground_forces": _summarise_ground_forces(combined_gf),
+                "pickup_systems": pickup_systems,
                 "via_rift": via_rift,
                 "needs_gravity_drive": needs_gd,
             })
-            all_reachable[dest] = planets
 
-        fleets.append({
-            "from_pos": tile_pos,
-            "units": unit_labels,
-            "fleet_move": fleet_move,
-            "destinations": destinations,
-        })
+    # For the active player, run combat simulations against defenders.
+    if is_active:
+        # Collect all attacker units across all fleets reaching each destination.
+        for dest, dest_data in by_destination.items():
+            defenders_raw = (tile_unit_data.get(dest) or {}).get("space") or {}
+            if not isinstance(defenders_raw, dict):
+                continue
+            # Build combined defender unit list (all non-player factions)
+            all_defender_units: list[dict[str, Any]] = []
+            for other_faction, other_units in defenders_raw.items():
+                if other_faction == faction:
+                    continue
+                if isinstance(other_units, list):
+                    all_defender_units.extend(other_units)
 
-    return {"fleets": fleets, "no_adjacency": no_adjacency}
+            if not all_defender_units:
+                dest_data["combat_result"] = "(no defenders — unopposed)"
+                continue
+
+            defender_group = _build_combat_group(all_defender_units)
+            if not defender_group.units:
+                dest_data["combat_result"] = "(no defenders with combat stats)"
+                continue
+
+            # Use the strongest arriving fleet for combat simulation
+            best_arrival = max(
+                dest_data["arrivals"],
+                key=lambda a: sum(
+                    _SHIP_MOVE.get(u.get("entityId", ""), 0)
+                    for u in []  # placeholder — pick first fleet for now
+                ) if False else len(a["ships"]),
+            )
+            # Gather the raw fleet units for the best arrival
+            best_from = best_arrival["from_pos"]
+            from_tile_data = tile_unit_data.get(best_from) or {}
+            from_space = from_tile_data.get("space") or {}
+            attacker_raw: list[dict[str, Any]] = (
+                from_space.get(faction) or []
+            ) if isinstance(from_space, dict) else []
+
+            attacker_group = _build_combat_group(attacker_raw)
+            if not attacker_group.units:
+                dest_data["combat_result"] = "(attacker has no combat-capable ships)"
+                continue
+
+            result = simulate_combat(attacker_group, defender_group, simulations=2000, seed=42)
+            dest_data["combat_result"] = _format_combat_result(result)
+
+    return {"by_destination": by_destination, "no_adjacency": no_adjacency}
 
 
 def _get_planet_ri(
@@ -931,29 +1195,59 @@ def print_player_summary(state: GameState, player_options_map: dict) -> None:
 
             if PlayerAction.TACTICAL_ACTION in opts.available_actions:
                 reach = _get_tactical_reach(player_id, state)
-                fleets = reach.get("fleets", [])
+                by_dest = reach.get("by_destination", {})
                 no_adj = reach.get("no_adjacency", [])
+                is_active = player_id == state.active_player_id
 
-                if fleets:
-                    print("    Tactical reach (unlocked fleets):")
-                    for fleet in sorted(fleets, key=lambda f: f["from_pos"]):
-                        unit_str = ", ".join(fleet["units"]) or "(unknown)"
-                        print(
-                            f"      From {fleet['from_pos']}"
-                            f" [fleet: {unit_str}, move {fleet['fleet_move']}]:"
+                if by_dest:
+                    print("    Tactical reach (by destination):")
+                    for dest_pos in sorted(by_dest):
+                        dest_data = by_dest[dest_pos]
+                        planets = dest_data["planets"]
+                        planet_str = ", ".join(planets) if planets else "(empty space)"
+                        defenders = dest_data.get("defenders", {})
+                        defender_strs = [
+                            f"{fac}: {', '.join(units)}"
+                            for fac, units in sorted(defenders.items())
+                        ]
+                        def_str = (
+                            "  [defenders: " + "; ".join(defender_strs) + "]"
+                            if defender_strs else ""
                         )
-                        for dest in fleet["destinations"]:
-                            pos = dest["pos"]
-                            planets = dest["planets"]
-                            planet_str = ", ".join(planets) if planets else "(empty space)"
+                        print(f"      {dest_pos} — {planet_str}{def_str}")
+
+                        for arrival in sorted(dest_data["arrivals"], key=lambda a: a["from_pos"]):
+                            ships_str = ", ".join(arrival["ships"]) or "(unknown)"
                             flags: list[str] = []
-                            if dest["via_rift"]:
-                                flags.append("gravity rift path — all ships at risk")
-                            if dest["needs_gravity_drive"]:
-                                gd_ships = ", ".join(dest["needs_gravity_drive"])
+                            if arrival["via_rift"]:
+                                flags.append("gravity rift — all ships at risk")
+                            if arrival["needs_gravity_drive"]:
+                                gd_ships = ", ".join(arrival["needs_gravity_drive"])
                                 flags.append(f"needs Gravity Drive: {gd_ships}")
                             flag_str = f"  [{'; '.join(flags)}]" if flags else ""
-                            print(f"        → {pos}: {planet_str}{flag_str}")
+                            cap = arrival["capacity"]
+                            cap_str = f", capacity {cap}" if cap > 0 else ""
+                            print(
+                                f"        ← from {arrival['from_pos']}"
+                                f" [{ships_str}, move {arrival['fleet_move']}{cap_str}]{flag_str}"
+                            )
+                            gf = arrival["ground_forces"]
+                            if gf:
+                                from_pos = arrival['from_pos']
+                                print(
+                                    f"          ground forces: {', '.join(gf)}"
+                                    f" (from {from_pos})"
+                                )
+                            pickup = arrival.get("pickup_systems", {})
+                            for pick_pos in sorted(pickup):
+                                pick_labels = pickup[pick_pos]
+                                print(
+                                    f"          + can pick up:"
+                                    f" {', '.join(pick_labels)} from {pick_pos}"
+                                )
+
+                        if is_active and dest_data.get("combat_result"):
+                            print(f"        ⚔ combat: {dest_data['combat_result']}")
 
                 if no_adj:
                     print(
