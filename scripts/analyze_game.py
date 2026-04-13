@@ -25,6 +25,9 @@ from collections import deque
 from typing import TYPE_CHECKING, Any
 from urllib.error import URLError
 
+from adapters.asyncti4 import from_asyncti4
+from engine.options import get_player_options
+
 if TYPE_CHECKING:
     from models.state import GameState
 
@@ -964,15 +967,11 @@ def print_player_summary(state: GameState, player_options_map: dict) -> None:
 
 def main() -> None:
     if len(sys.argv) != 2:
-        print("Usage: python scripts/analyze_game.py <game_number>", file=sys.stderr)
-        print("Example: python scripts/analyze_game.py pbd22295", file=sys.stderr)
+        print("Usage: ti4-analyze <game_number>", file=sys.stderr)
+        print("Example: ti4-analyze pbd22295", file=sys.stderr)
         sys.exit(1)
 
     game_number = sys.argv[1].strip()
-
-    # Import here so the script can be run from repo root with PYTHONPATH set
-    from adapters.asyncti4 import from_asyncti4
-    from engine.options import get_player_options
 
     raw = fetch_game_json(game_number)
     state = from_asyncti4(raw)
