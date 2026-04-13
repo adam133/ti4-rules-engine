@@ -1,0 +1,731 @@
+[
+    {
+        "id": "arborecagent",
+        "faction": "arborec",
+        "type": "agent",
+        "name": "Letani Ospha",
+        "title": "Unity Through Peace",
+        "abilityWindow": "ACTION:",
+        "source": "pok"
+    },
+    {
+        "id": "arboreccommander",
+        "faction": "arborec",
+        "type": "commander",
+        "name": "Dirzuga Rophal",
+        "title": "Peace Through Strength",
+        "abilityWindow": "After another player activates a system that contains 1 or more of your units that have PRODUCTION:",
+        "source": "pok"
+    },
+    {
+        "id": "arborechero",
+        "faction": "arborec",
+        "type": "hero",
+        "name": "The Cavalry",
+        "title": "Tyrant",
+        "abilityWindow": "When you would place 1 or more units with PRODUCTION:",
+        "source": "pok"
+    },
+    {
+        "id": "argentagent",
+        "faction": "argent",
+        "type": "agent",
+        "name": "Trilossa Aun Mirik",
+        "title": "Scorn of Ylir",
+        "abilityWindow": "When a player produces ground forces in a system:",
+        "source": "pok"
+    },
+    {
+        "id": "argentcommander",
+        "faction": "argent",
+        "type": "commander",
+        "name": "Trrakan Aun Zulok",
+        "title": "Strike Wing Commander",
+        "abilityWindow": "When 1 or more of your units make a roll for a unit ability:",
+        "source": "pok"
+    },
+    {
+        "id": "argenthero",
+        "faction": "argent",
+        "type": "hero",
+        "name": "Mirik Aun Sissiri",
+        "title": "144th Plutonic Guard",
+        "abilityWindow": "At the start of a combat:",
+        "source": "pok"
+    },
+    {
+        "id": "cabalagent",
+        "faction": "cabal",
+        "type": "agent",
+        "name": "The Stillness of Stars",
+        "title": "Oppressive Silence",
+        "abilityWindow": "After another player replenishes commodities:",
+        "source": "pok"
+    },
+    {
+        "id": "cabalcommander",
+        "faction": "cabal",
+        "type": "commander",
+        "name": "That Which Molds Flesh",
+        "title": "Grisly Abomination",
+        "abilityWindow": "When you produce fighter or infantry units:",
+        "source": "pok"
+    },
+    {
+        "id": "cabalhero",
+        "faction": "cabal",
+        "type": "hero",
+        "name": "It Feeds on Carrion",
+        "title": "Abyssal Lurker",
+        "abilityWindow": "ACTION:",
+        "source": "pok"
+    },
+    {
+        "id": "empyreanagent",
+        "faction": "empyrean",
+        "type": "agent",
+        "name": "Acamar",
+        "title": "The Gift of Night",
+        "abilityWindow": "After a player moves ships into a system that does not contain any planets:",
+        "source": "pok"
+    },
+    {
+        "id": "empyreancommander",
+        "faction": "empyrean",
+        "type": "commander",
+        "name": "Xuange",
+        "title": "The Archivist",
+        "abilityWindow": "After another player moves ships into a system that contains 1 of your command tokens:",
+        "source": "pok"
+    },
+    {
+        "id": "empyreanhero",
+        "faction": "empyrean",
+        "type": "hero",
+        "name": "Rin, the Master's Legacy",
+        "title": "Master's Thesis",
+        "abilityWindow": "ACTION:",
+        "source": "pok"
+    },
+    {
+        "id": "ghostagent",
+        "faction": "ghost",
+        "type": "agent",
+        "name": "Emissary Taivra",
+        "title": "The Azure Whisper",
+        "abilityWindow": "After a player activates a system that contains a non-delta wormhole:",
+        "source": "pok"
+    },
+    {
+        "id": "ghostcommander",
+        "faction": "ghost",
+        "type": "commander",
+        "name": "Sai Seravus",
+        "title": "Gatewarden",
+        "abilityWindow": "After your ships move:",
+        "source": "pok"
+    },
+    {
+        "id": "ghosthero",
+        "faction": "ghost",
+        "type": "hero",
+        "name": "Iperia",
+        "title": "Ghost of Creuss",
+        "abilityWindow": "ACTION:",
+        "source": "pok"
+    },
+    {
+        "id": "redcreussagent",
+        "faction": "ghost",
+        "type": "agent",
+        "name": "\"Who Knows?\"",
+        "title": "Forlorn Shadow",
+        "abilityWindow": "ACTION:",
+        "source": "pok"
+    },
+    {
+        "id": "redcreusscommander",
+        "faction": "ghost",
+        "type": "commander",
+        "name": "\"Total Mystery\"",
+        "title": "Wistful Soul",
+        "abilityWindow": "At the end of a combat between any players:",
+        "source": "pok"
+    },
+    {
+        "id": "redcreusshero",
+        "faction": "ghost",
+        "type": "hero",
+        "name": "\"A Tall Stranger\"",
+        "title": "Wayward Riftwalker",
+        "abilityWindow": "When you produce ships",
+        "source": "pok"
+    },
+    {
+        "id": "hacanagent",
+        "faction": "hacan",
+        "type": "agent",
+        "name": "Carth of Golden Sands",
+        "title": "Tripartite Governor",
+        "abilityWindow": "During the action phase:",
+        "source": "pok"
+    },
+    {
+        "id": "hacancommander",
+        "faction": "hacan",
+        "type": "commander",
+        "name": "Gila the Silvertongue",
+        "title": "Kenaran Ambassador",
+        "abilityWindow": "When you cast votes:",
+        "source": "pok"
+    },
+    {
+        "id": "hacanhero",
+        "faction": "hacan",
+        "type": "hero",
+        "name": "Harrugh Gefhara",
+        "title": "Master Merchant",
+        "abilityWindow": "ACTION:",
+        "source": "pok"
+    },
+    {
+        "id": "jolnaragent",
+        "faction": "jolnar",
+        "type": "agent",
+        "name": "Doctor Sucaban",
+        "title": "Head of Medical \"R&D\"",
+        "abilityWindow": "When a player spends resources to research:",
+        "source": "pok"
+    },
+    {
+        "id": "jolnarcommander",
+        "faction": "jolnar",
+        "type": "commander",
+        "name": "Agnlan Oln",
+        "title": "Advisor Adjunct",
+        "abilityWindow": "After you roll dice for a unit ability:",
+        "source": "pok"
+    },
+    {
+        "id": "jolnarhero",
+        "faction": "jolnar",
+        "type": "hero",
+        "name": "Rin, the Master's Legacy",
+        "title": "The Master's Thesis",
+        "abilityWindow": "ACTION:",
+        "source": "pok"
+    },
+    {
+        "id": "keleresagent",
+        "faction": "keleres",
+        "type": "agent",
+        "name": "Xander Alexin Victori III",
+        "title": "Miracle Worker",
+        "abilityWindow": "At any time:",
+        "source": "pok"
+    },
+    {
+        "id": "kelerescommander",
+        "faction": "keleres",
+        "type": "commander",
+        "name": "Suffi An",
+        "title": "Working Multiple Angles",
+        "abilityWindow": "After you perform a component action:",
+        "source": "pok"
+    },
+    {
+        "id": "kelereshero",
+        "faction": "keleres",
+        "type": "hero",
+        "name": "Illsolace",
+        "title": "The Tribunal",
+        "abilityWindow": "ACTION:",
+        "source": "pok"
+    },
+    {
+        "id": "l1z1xagent",
+        "faction": "l1z1x",
+        "type": "agent",
+        "name": "I48S",
+        "title": "Enhancer Prodigy",
+        "abilityWindow": "After a player activates a system:",
+        "source": "pok"
+    },
+    {
+        "id": "l1z1xcommander",
+        "faction": "l1z1x",
+        "type": "commander",
+        "name": "2RAM",
+        "title": "Integrated Systems Engineer",
+        "abilityWindow": "At any time:",
+        "source": "pok"
+    },
+    {
+        "id": "l1z1xhero",
+        "faction": "l1z1x",
+        "type": "hero",
+        "name": "0.0.1",
+        "title": "Tyrant",
+        "abilityWindow": "ACTION:",
+        "source": "pok"
+    },
+    {
+        "id": "letnevagent",
+        "faction": "letnev",
+        "type": "agent",
+        "name": "Viscount Unlenn",
+        "title": "The Dunlain Scourge",
+        "abilityWindow": "At the start of a space combat round:",
+        "source": "pok"
+    },
+    {
+        "id": "letnevcommander",
+        "faction": "letnev",
+        "type": "commander",
+        "name": "Rear Admiral Farran",
+        "title": "Sector XVIII Viceroy",
+        "abilityWindow": "After 1 of your units uses SUSTAIN DAMAGE:",
+        "source": "pok"
+    },
+    {
+        "id": "letnevhero",
+        "faction": "letnev",
+        "type": "hero",
+        "name": "Viscount Unlenn",
+        "title": "Grim Mandate",
+        "abilityWindow": "ACTION:",
+        "source": "pok"
+    },
+    {
+        "id": "mahactagent",
+        "faction": "mahact",
+        "type": "agent",
+        "name": "Jae Mir Kan",
+        "title": "Archon of Prosperity",
+        "abilityWindow": "When you would spend a command token during the secondary ability of a strategic action:",
+        "source": "pok"
+    },
+    {
+        "id": "mahactcommander",
+        "faction": "mahact",
+        "type": "commander",
+        "name": "Airo Shir Aur",
+        "title": "Edict of Ragh",
+        "abilityWindow": "When another player replenishes commodities:",
+        "source": "pok"
+    },
+    {
+        "id": "mahacthero",
+        "faction": "mahact",
+        "type": "hero",
+        "name": "Rin, the Master's Legacy",
+        "title": "Imperia",
+        "abilityWindow": "At the start of the strategy phase:",
+        "source": "pok"
+    },
+    {
+        "id": "mentakagent",
+        "faction": "mentak",
+        "type": "agent",
+        "name": "Suffi An",
+        "title": "90% Smuggler, 110% Energy",
+        "abilityWindow": "After the Pillage faction ability is used against another player:",
+        "source": "pok"
+    },
+    {
+        "id": "mentakcommander",
+        "faction": "mentak",
+        "type": "commander",
+        "name": "Iperia",
+        "title": "The Quorum Shield",
+        "abilityWindow": "After you win a combat:",
+        "source": "pok"
+    },
+    {
+        "id": "mentakhero",
+        "faction": "mentak",
+        "type": "hero",
+        "name": "S'ula Mentarion",
+        "title": "The Oracle's Edict",
+        "abilityWindow": "ACTION:",
+        "source": "pok"
+    },
+    {
+        "id": "muaatagent",
+        "faction": "muaat",
+        "type": "agent",
+        "name": "Umbat",
+        "title": "Forgemaster",
+        "abilityWindow": "ACTION:",
+        "source": "pok"
+    },
+    {
+        "id": "muaatcommander",
+        "faction": "muaat",
+        "type": "commander",
+        "name": "Magmus",
+        "title": "The Grand Warlord",
+        "abilityWindow": "After you win a space combat:",
+        "source": "pok"
+    },
+    {
+        "id": "muaathero",
+        "faction": "muaat",
+        "type": "hero",
+        "name": "Adjudicator Baal",
+        "title": "Adjudicator Protocol",
+        "abilityWindow": "ACTION:",
+        "source": "pok"
+    },
+    {
+        "id": "naaluagent",
+        "faction": "naalu",
+        "type": "agent",
+        "name": "Z'eu",
+        "title": "Agent of the Nefishh",
+        "abilityWindow": "ACTION:",
+        "source": "pok"
+    },
+    {
+        "id": "naalucommander",
+        "faction": "naalu",
+        "type": "commander",
+        "name": "M'aban",
+        "title": "The Seer",
+        "abilityWindow": "After another player commits ground forces to a planet:",
+        "source": "pok"
+    },
+    {
+        "id": "naaluhero",
+        "faction": "naalu",
+        "type": "hero",
+        "name": "The Oracle",
+        "title": "Gift of Prescience",
+        "abilityWindow": "At any time:",
+        "source": "pok"
+    },
+    {
+        "id": "naazagent",
+        "faction": "naaz",
+        "type": "agent",
+        "name": "Garv and Gunn",
+        "title": "Plucky Archaeologists",
+        "abilityWindow": "At the end of a player's turn:",
+        "source": "pok"
+    },
+    {
+        "id": "naazcommander",
+        "faction": "naaz",
+        "type": "commander",
+        "name": "Dart and Tai",
+        "title": "Rift Hunters",
+        "abilityWindow": "After you explore a planet:",
+        "source": "pok"
+    },
+    {
+        "id": "naazhero",
+        "faction": "naaz",
+        "type": "hero",
+        "name": "Gg and Ragh",
+        "title": "Ancient Monuments",
+        "abilityWindow": "ACTION:",
+        "source": "pok"
+    },
+    {
+        "id": "nekroagent",
+        "faction": "nekro",
+        "type": "agent",
+        "name": "Nekro Malleon",
+        "title": "The Shifting Host",
+        "abilityWindow": "During the action phase:",
+        "source": "pok"
+    },
+    {
+        "id": "nekrocommander",
+        "faction": "nekro",
+        "type": "commander",
+        "name": "Nekro Acidos",
+        "title": "Reaper of the Cosmos",
+        "abilityWindow": "After another player's unit is destroyed:",
+        "source": "pok"
+    },
+    {
+        "id": "nekrohero",
+        "faction": "nekro",
+        "type": "hero",
+        "name": "Nekro Decimator",
+        "title": "Nekro Decimator",
+        "abilityWindow": "ACTION:",
+        "source": "pok"
+    },
+    {
+        "id": "nomadagentartuno",
+        "faction": "nomad",
+        "type": "agent",
+        "name": "Artuno the Betrayer",
+        "title": "Sumerian Overseer",
+        "abilityWindow": "When you gain trade goods from the supply:",
+        "source": "pok"
+    },
+    {
+        "id": "nomadagentmercer",
+        "faction": "nomad",
+        "type": "agent",
+        "name": "Field Marshal Mercer",
+        "title": "Shikrai General",
+        "abilityWindow": "At the end of a player's turn:",
+        "source": "pok"
+    },
+    {
+        "id": "nomadagentthundarian",
+        "faction": "nomad",
+        "type": "agent",
+        "name": "The Thundarian",
+        "title": "Temporal Enigma",
+        "abilityWindow": "After the \"Roll Dice\" step of combat:",
+        "source": "pok"
+    },
+    {
+        "id": "nomadcommander",
+        "faction": "nomad",
+        "type": "commander",
+        "name": "Navarch Feng",
+        "title": "Frontier Commander",
+        "abilityWindow": "When you move ships into a system:",
+        "source": "pok"
+    },
+    {
+        "id": "nomadhero",
+        "faction": "nomad",
+        "type": "hero",
+        "name": "The Cavalry",
+        "title": "Nomad Flagship",
+        "abilityWindow": "At the start of a space combat:",
+        "source": "pok"
+    },
+    {
+        "id": "sardakkagent",
+        "faction": "sardakk",
+        "type": "agent",
+        "name": "T'ro",
+        "title": "Tekklar Legionnaire",
+        "abilityWindow": "At the end of a player's tactical action:",
+        "source": "pok"
+    },
+    {
+        "id": "sardakkcommander",
+        "faction": "sardakk",
+        "type": "commander",
+        "name": "Rear Admiral Navarch",
+        "title": "Scepter of Dominion",
+        "abilityWindow": "After you activate a system that contains your ships:",
+        "source": "pok"
+    },
+    {
+        "id": "sardakkhero",
+        "faction": "sardakk",
+        "type": "hero",
+        "name": "C'morran N'orr",
+        "title": "Tekklar Legion",
+        "abilityWindow": "ACTION:",
+        "source": "pok"
+    },
+    {
+        "id": "saaragent",
+        "faction": "saar",
+        "type": "agent",
+        "name": "Captain Mendosa",
+        "title": "Captain of the Fifth Fleet",
+        "abilityWindow": "When a player activates a system:",
+        "source": "pok"
+    },
+    {
+        "id": "saarcommander",
+        "faction": "saar",
+        "type": "commander",
+        "name": "Gurno Aggero",
+        "title": "Chieftain of the Nomadic",
+        "abilityWindow": "When you produce ships:",
+        "source": "pok"
+    },
+    {
+        "id": "saarhero",
+        "faction": "saar",
+        "type": "hero",
+        "name": "Gurno Aggero",
+        "title": "Stymie",
+        "abilityWindow": "ACTION:",
+        "source": "pok"
+    },
+    {
+        "id": "solagent",
+        "faction": "sol",
+        "type": "agent",
+        "name": "Evelyn DeLouis",
+        "title": "Master Tactician",
+        "abilityWindow": "At the start of a ground combat round:",
+        "source": "pok"
+    },
+    {
+        "id": "solcommander",
+        "faction": "sol",
+        "type": "commander",
+        "name": "Claire Gibson",
+        "title": "Master Sergeant",
+        "abilityWindow": "When you commit ground forces to a planet:",
+        "source": "pok"
+    },
+    {
+        "id": "solhero",
+        "faction": "sol",
+        "type": "hero",
+        "name": "Jace X. 4th Air Legion",
+        "title": "Divine Spark",
+        "abilityWindow": "ACTION:",
+        "source": "pok"
+    },
+    {
+        "id": "titansagent",
+        "faction": "titans",
+        "type": "agent",
+        "name": "Tellurian",
+        "title": "The Protector",
+        "abilityWindow": "Before a hit would be assigned:",
+        "source": "pok"
+    },
+    {
+        "id": "titanscommander",
+        "faction": "titans",
+        "type": "commander",
+        "name": "Tungstantus",
+        "title": "Lithoids Speaker",
+        "abilityWindow": "When you use your AWAKEN ability:",
+        "source": "pok"
+    },
+    {
+        "id": "titanshero",
+        "faction": "titans",
+        "type": "hero",
+        "name": "Ul the Progenitor",
+        "title": "Gift of the Void",
+        "abilityWindow": "ACTION:",
+        "source": "pok"
+    },
+    {
+        "id": "winnuagent",
+        "faction": "winnu",
+        "type": "agent",
+        "name": "Berekar Berekon",
+        "title": "Arbiter of Divine Right",
+        "abilityWindow": "When 1 or more of a player's units use PRODUCTION:",
+        "source": "pok"
+    },
+    {
+        "id": "winnucommander",
+        "faction": "winnu",
+        "type": "commander",
+        "name": "Mathis Mathieu Mathieu",
+        "title": "Emissary of the Throne",
+        "abilityWindow": "After the speaker reveals an agenda card:",
+        "source": "pok"
+    },
+    {
+        "id": "winnuhero",
+        "faction": "winnu",
+        "type": "hero",
+        "name": "Mathis",
+        "title": "Blood Ties",
+        "abilityWindow": "At the start of the agenda phase:",
+        "source": "pok"
+    },
+    {
+        "id": "xxchaagent",
+        "faction": "xxcha",
+        "type": "agent",
+        "name": "Ggrocuto Rinn",
+        "title": "The King's Shield",
+        "abilityWindow": "ACTION:",
+        "source": "pok"
+    },
+    {
+        "id": "xxchacommander",
+        "faction": "xxcha",
+        "type": "commander",
+        "name": "Xxekir Grom",
+        "title": "King's Legislator",
+        "abilityWindow": "After an agenda is resolved:",
+        "source": "pok"
+    },
+    {
+        "id": "xxchahero",
+        "faction": "xxcha",
+        "type": "hero",
+        "name": "Xxcha Hero",
+        "title": "Political Favor",
+        "abilityWindow": "When an agenda is revealed:",
+        "source": "pok"
+    },
+    {
+        "id": "yinagent",
+        "faction": "yin",
+        "type": "agent",
+        "name": "Brother Milor",
+        "title": "Purified by Fire",
+        "abilityWindow": "After a player's unit is destroyed during combat:",
+        "source": "pok"
+    },
+    {
+        "id": "yincommander",
+        "faction": "yin",
+        "type": "commander",
+        "name": "Danara of the Circles",
+        "title": "Sacred Teacher",
+        "abilityWindow": "When you use PRODUCTION:",
+        "source": "pok"
+    },
+    {
+        "id": "yinhero",
+        "faction": "yin",
+        "type": "hero",
+        "name": "Brother Omar",
+        "title": "Benediction",
+        "abilityWindow": "At the start of a space combat:",
+        "source": "pok"
+    },
+    {
+        "id": "yssarilagent",
+        "faction": "yssaril",
+        "type": "agent",
+        "name": "Ssruu",
+        "title": "Clever, Clever Ssruu",
+        "abilityWindow": "At any time:",
+        "source": "pok"
+    },
+    {
+        "id": "yssarilcommander",
+        "faction": "yssaril",
+        "type": "commander",
+        "name": "Kyver, Blade and Key",
+        "title": "Kyver, Blade and Key",
+        "abilityWindow": "After you perform a tactical action:",
+        "source": "pok"
+    },
+    {
+        "id": "yssarilhero",
+        "faction": "yssaril",
+        "type": "hero",
+        "name": "Kyver, Blade and Key",
+        "title": "Scepter of Dominion",
+        "abilityWindow": "ACTION:",
+        "source": "pok"
+    },
+    {
+        "id": "orlandohero",
+        "faction": "bastion",
+        "type": "hero",
+        "name": "F.S.S. Orlando",
+        "title": "Apollo Protocol",
+        "abilityWindow": "When one of your units in the Ordinian system is destroyed",
+        "source": "pok"
+    }
+]

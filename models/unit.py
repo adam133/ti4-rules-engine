@@ -29,7 +29,7 @@ class Unit(BaseModel):
     id: str = Field(description="Unique snake_case identifier, e.g. 'carrier'.")
     name: str = Field(description="Display name, e.g. 'Carrier'.")
     unit_type: UnitType
-    cost: int | None = Field(
+    cost: float | None = Field(
         default=None,
         ge=0,
         description="Production cost in resources. None for units that cannot be built (e.g. Flagship).",

@@ -41,6 +41,7 @@ WEB_DATA_URL_TEMPLATE = (
 _DATA_DIR = pathlib.Path(__file__).parent.parent / "data"
 _TECH_DATA_FILE = _DATA_DIR / "technologies.json"
 _OBJECTIVES_DATA_FILE = _DATA_DIR / "objectives.json"
+_LEADERS_DATA_FILE = _DATA_DIR / "leaders.json"
 
 # ---------------------------------------------------------------------------
 # Hex-grid adjacency
@@ -322,6 +323,30 @@ def _load_action_tech_names_cached() -> dict[str, str]:
         return {}
 
 
+def fetch_leader_data() -> dict[str, dict[str, Any]]:
+    """Return a mapping of leader id → leader record from ``data/leaders.json``.
+
+    Each record contains at minimum: ``id``, ``faction``, ``type``, ``name``,
+    ``title``, ``abilityWindow``, and ``source``.
+    """
+    return _load_leader_data_cached()
+
+
+@functools.cache
+def _load_leader_data_cached() -> dict[str, dict[str, Any]]:
+    """Cached implementation of :func:`fetch_leader_data`."""
+    try:
+        with _LEADERS_DATA_FILE.open(encoding="utf-8") as fh:
+            leaders: list[dict[str, Any]] = json.load(fh)
+        return {
+            entry["id"]: entry
+            for entry in leaders
+            if isinstance(entry, dict) and "id" in entry
+        }
+    except (OSError, json.JSONDecodeError, KeyError, TypeError):
+        return {}
+
+
 # ---------------------------------------------------------------------------
 # Fleet movement BFS
 # ---------------------------------------------------------------------------
@@ -380,7 +405,7 @@ _SHIP_CAPACITY: dict[str, int] = {
 _COMBAT_UNITS: dict[str, Unit] = {
     "cv": Unit(
         id="carrier", name="Carrier", unit_type=UnitType.CARRIER,
-        cost=3, combat=9, move=2, capacity=4,
+        cost=3, combat=9, move=1, capacity=4,
     ),
     "dd": Unit(
         id="destroyer", name="Destroyer", unit_type=UnitType.DESTROYER,
@@ -396,19 +421,21 @@ _COMBAT_UNITS: dict[str, Unit] = {
     ),
     "dn": Unit(
         id="dreadnought", name="Dreadnought", unit_type=UnitType.DREADNOUGHT,
-        cost=4, combat=5, combat_rolls=2, move=1, capacity=1, sustain_damage=True,
+        cost=4, combat=5, combat_rolls=1, move=1, capacity=1,
+        bombardment=5, bombardment_rolls=1, sustain_damage=True,
     ),
     "fs": Unit(
         id="flagship", name="Flagship", unit_type=UnitType.FLAGSHIP,
-        cost=8, combat=5, combat_rolls=2, move=1, sustain_damage=True,
+        cost=8, combat=7, combat_rolls=2, move=1, capacity=3, sustain_damage=True,
     ),
     "ws": Unit(
         id="war_sun", name="War Sun", unit_type=UnitType.WAR_SUN,
-        cost=12, combat=3, combat_rolls=3, move=2, capacity=6, sustain_damage=True,
+        cost=12, combat=3, combat_rolls=3, move=3, capacity=6,
+        bombardment=3, bombardment_rolls=3, sustain_damage=True,
     ),
     "ff": Unit(
         id="fighter", name="Fighter", unit_type=UnitType.FIGHTER,
-        cost=1, combat=9, move=0,
+        cost=0.5, combat=9, move=0,
     ),
 }
 
@@ -1058,6 +1085,7 @@ def print_player_summary(state: GameState, player_options_map: dict) -> None:
 
     tech_names = fetch_tech_names()
     action_techs = fetch_action_tech_names()
+    leader_registry = fetch_leader_data()
     obj_data = fetch_objective_data()
     tile_unit_data: dict[str, Any] = state.extra.get("tile_unit_data", {})
     planet_ri = _get_planet_ri(tile_unit_data)
@@ -1156,7 +1184,15 @@ def print_player_summary(state: GameState, player_options_map: dict) -> None:
                     status = "exhausted"
                 else:
                     status = "READY"
-                print(f"      {lid} ({ltype_cap}): {status}")
+                # Show the ability timing window if available in our data
+                timing = ""
+                if ltype == "agent":
+                    rec = leader_registry.get(lid)
+                    if rec:
+                        window = rec.get("abilityWindow", "")
+                        if window:
+                            timing = f"  [{window}]"
+                print(f"      {lid} ({ltype_cap}): {status}{timing}")
 
         if opts:
             actions = [a.value for a in opts.available_actions]
@@ -1177,13 +1213,19 @@ def print_player_summary(state: GameState, player_options_map: dict) -> None:
                 for t in action_tech_ids:
                     component_sources.append(f"tech: {action_techs[t]}")
 
-                # Readied (not exhausted, not locked) agents
+                # Readied agents with ACTION: timing only.
+                # Agents use their own timing windows (e.g. "At the end of a player's
+                # turn:"); only those whose ability window is "ACTION:" are component
+                # actions.  Agents without known data are conservatively excluded.
                 for leader in leaders:
                     if _get_leader_type(leader) == "agent":
-                        if not leader.get("exhausted", False) and not leader.get("locked", False):
-                            component_sources.append(
-                                f"agent: {leader.get('id', 'unknown')} (readied)"
-                            )
+                        if leader.get("exhausted", False) or leader.get("locked", False):
+                            continue
+                        lid = str(leader.get("id", "unknown"))
+                        rec = leader_registry.get(lid)
+                        if rec and rec.get("abilityWindow", "").startswith("ACTION:"):
+                            name = rec.get("name", lid)
+                            component_sources.append(f"agent: {name} ({lid}) (READY)")
 
                 if component_sources:
                     print("    Public component actions:")

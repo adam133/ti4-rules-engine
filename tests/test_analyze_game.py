@@ -1204,3 +1204,69 @@ class TestAsyncTI4AdapterNewFields:
         player_leaders = state.extra.get("player_leaders", {})
         assert "alice" not in player_leaders
 
+
+
+# ---------------------------------------------------------------------------
+# Leader data registry
+# ---------------------------------------------------------------------------
+
+
+class TestFetchLeaderData:
+    def test_returns_dict(self) -> None:
+        from scripts.analyze_game import fetch_leader_data
+        data = fetch_leader_data()
+        assert isinstance(data, dict)
+
+    def test_naaz_agent_present(self) -> None:
+        from scripts.analyze_game import fetch_leader_data
+        data = fetch_leader_data()
+        assert "naazagent" in data
+
+    def test_naaz_agent_not_action_timing(self) -> None:
+        from scripts.analyze_game import fetch_leader_data
+        data = fetch_leader_data()
+        naaz = data["naazagent"]
+        assert not naaz.get("abilityWindow", "").startswith("ACTION:")
+
+    def test_arborec_agent_is_action_timing(self) -> None:
+        from scripts.analyze_game import fetch_leader_data
+        data = fetch_leader_data()
+        arborec = data["arborecagent"]
+        assert arborec.get("abilityWindow", "").startswith("ACTION:")
+
+    def test_leader_type_field_present(self) -> None:
+        from scripts.analyze_game import fetch_leader_data
+        data = fetch_leader_data()
+        for lid, rec in data.items():
+            assert "type" in rec, f"Leader {lid!r} missing 'type' field"
+
+
+# ---------------------------------------------------------------------------
+# Unit stats
+# ---------------------------------------------------------------------------
+
+
+class TestCombatUnitStats:
+    def test_carrier_move_is_one(self) -> None:
+        from scripts.analyze_game import _COMBAT_UNITS
+        assert _COMBAT_UNITS["cv"].move == 1
+
+    def test_dreadnought_combat_rolls_is_one(self) -> None:
+        from scripts.analyze_game import _COMBAT_UNITS
+        assert _COMBAT_UNITS["dn"].combat_rolls == 1
+
+    def test_war_sun_move_is_three(self) -> None:
+        from scripts.analyze_game import _COMBAT_UNITS
+        assert _COMBAT_UNITS["ws"].move == 3
+
+    def test_flagship_capacity_is_three(self) -> None:
+        from scripts.analyze_game import _COMBAT_UNITS
+        assert _COMBAT_UNITS["fs"].capacity == 3
+
+    def test_flagship_combat_is_seven(self) -> None:
+        from scripts.analyze_game import _COMBAT_UNITS
+        assert _COMBAT_UNITS["fs"].combat == 7
+
+    def test_fighter_cost_is_half(self) -> None:
+        from scripts.analyze_game import _COMBAT_UNITS
+        assert _COMBAT_UNITS["ff"].cost == 0.5
