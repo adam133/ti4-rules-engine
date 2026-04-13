@@ -375,6 +375,8 @@ _SHIP_CAPACITY: dict[str, int] = {
 }
 
 # Standard TI4 unit definitions used for Monte Carlo combat simulations.
+# Note: cruisers use both entity IDs 'ca' and 'cr' in AsyncTI4 exports
+# (faction-dependent or upgrade-dependent).  Both map to identical stats.
 _COMBAT_UNITS: dict[str, Unit] = {
     "cv": Unit(
         id="carrier", name="Carrier", unit_type=UnitType.CARRIER,
@@ -925,13 +927,10 @@ def _get_tactical_reach(
                 dest_data["combat_result"] = "(no defenders with combat stats)"
                 continue
 
-            # Use the strongest arriving fleet for combat simulation
+            # Use the fleet with the most ships for combat simulation
             best_arrival = max(
                 dest_data["arrivals"],
-                key=lambda a: sum(
-                    _SHIP_MOVE.get(u.get("entityId", ""), 0)
-                    for u in []  # placeholder — pick first fleet for now
-                ) if False else len(a["ships"]),
+                key=lambda a: len(a["ships"]),
             )
             # Gather the raw fleet units for the best arrival
             best_from = best_arrival["from_pos"]
@@ -1233,10 +1232,9 @@ def print_player_summary(state: GameState, player_options_map: dict) -> None:
                             )
                             gf = arrival["ground_forces"]
                             if gf:
-                                from_pos = arrival['from_pos']
                                 print(
                                     f"          ground forces: {', '.join(gf)}"
-                                    f" (from {from_pos})"
+                                    f" (from {arrival['from_pos']})"
                                 )
                             pickup = arrival.get("pickup_systems", {})
                             for pick_pos in sorted(pickup):
