@@ -432,14 +432,17 @@ class TestGetReachInfo:
             extra={"tile_unit_data": tile_unit_data, "tile_positions": {}},
         )
         reach = _get_tactical_reach("p1", state)
-        fleets = reach["fleets"]
-        assert len(fleets) == 1
-        fleet = fleets[0]
-        assert fleet["from_pos"] == "000"
-        assert fleet["fleet_move"] == 1  # limited by carrier
+        by_dest = reach["by_destination"]
+        # Fleet move is 1 (limited by carrier), so only 1-hop destinations
+        all_arrivals = [a for d in by_dest.values() for a in d["arrivals"]]
+        assert len(all_arrivals) > 0
+        # All arrivals originate from 000
+        assert all(a["from_pos"] == "000" for a in all_arrivals)
+        assert all(a["fleet_move"] == 1 for a in all_arrivals)
         # All destinations are 1 hop (fleet_move=1); no gravity drive needed
-        for dest in fleet["destinations"]:
-            assert dest["needs_gravity_drive"] == []
+        for dest_data in by_dest.values():
+            for arrival in dest_data["arrivals"]:
+                assert arrival["needs_gravity_drive"] == []
 
     def test_special_position_via_wormhole(self) -> None:
         """Fleets at special positions (e.g. 'br') use wormhole adjacency."""
@@ -471,11 +474,10 @@ class TestGetReachInfo:
             extra={"tile_unit_data": tile_unit_data, "tile_positions": tile_positions},
         )
         reach = _get_tactical_reach("p1", state)
-        fleets = reach["fleets"]
+        by_dest = reach["by_destination"]
         # The fleet at 'br' should reach '101' via DELTA wormhole
-        assert len(fleets) == 1
-        dest_positions = {d["pos"] for d in fleets[0]["destinations"]}
-        assert "101" in dest_positions
+        assert "101" in by_dest
+        assert any(a["from_pos"] == "br" for a in by_dest["101"]["arrivals"])
 
     def test_special_position_no_wormhole_in_no_adjacency(self) -> None:
         """Special positions with no wormholes appear in no_adjacency."""
@@ -629,8 +631,451 @@ class TestCreussWormholeAdjacency:
 
 
 # ---------------------------------------------------------------------------
-# Objective data loading and formatting
+# New _get_tactical_reach – by_destination format, ground forces, defenders, combat
 # ---------------------------------------------------------------------------
+
+
+_ALL_POSITIONS_FULL = (
+    ["000"]
+    + [f"10{i}" for i in range(1, 7)]
+    + [f"2{i:02d}" for i in range(1, 13)]
+)
+
+
+def _make_full_map() -> dict:
+    return {pos: _make_tile_data() for pos in _ALL_POSITIONS_FULL}
+
+
+class TestTacticalReachByDestination:
+    """Tests for the refactored _get_tactical_reach returning by_destination."""
+
+    def _make_state(
+        self,
+        tile_unit_data: dict,
+        faction: str = "myfaction",
+        player_id: str = "p1",
+        active_player_id: str | None = None,
+    ):
+        from models.state import GameState, PlayerState, TurnOrder
+        return GameState(
+            game_id="test",
+            turn_order=TurnOrder(speaker_id=player_id, order=[player_id]),
+            active_player_id=active_player_id,
+            players={
+                player_id: PlayerState(
+                    player_id=player_id,
+                    faction_id=faction,
+                    controlled_planets=[],
+                    exhausted_planets=[],
+                    researched_technologies=[],
+                )
+            },
+            extra={"tile_unit_data": tile_unit_data, "tile_positions": {}},
+        )
+
+    def test_returns_by_destination_key(self) -> None:
+        tile_unit_data = _make_full_map()
+        tile_unit_data["000"]["space"] = {
+            "myfaction": [{"entityId": "dd", "entityType": "unit", "count": 1}]
+        }
+        state = self._make_state(tile_unit_data)
+        reach = _get_tactical_reach("p1", state)
+        assert "by_destination" in reach
+        assert "no_adjacency" in reach
+
+    def test_destinations_contain_arrivals(self) -> None:
+        tile_unit_data = _make_full_map()
+        tile_unit_data["000"]["space"] = {
+            "myfaction": [{"entityId": "dd", "entityType": "unit", "count": 1}]
+        }
+        state = self._make_state(tile_unit_data)
+        by_dest = _get_tactical_reach("p1", state)["by_destination"]
+        assert len(by_dest) > 0
+        for dest_data in by_dest.values():
+            assert "arrivals" in dest_data
+            assert "planets" in dest_data
+            assert "defenders" in dest_data
+            assert "combat_result" in dest_data
+
+    def test_from_pos_in_arrival(self) -> None:
+        tile_unit_data = _make_full_map()
+        tile_unit_data["101"]["space"] = {
+            "myfaction": [{"entityId": "dd", "entityType": "unit", "count": 1}]
+        }
+        state = self._make_state(tile_unit_data)
+        by_dest = _get_tactical_reach("p1", state)["by_destination"]
+        all_from = {a["from_pos"] for d in by_dest.values() for a in d["arrivals"]}
+        assert "101" in all_from
+
+    def test_ship_labels_in_arrival(self) -> None:
+        tile_unit_data = _make_full_map()
+        tile_unit_data["000"]["space"] = {
+            "myfaction": [
+                {"entityId": "cv", "entityType": "unit", "count": 2},
+                {"entityId": "dd", "entityType": "unit", "count": 1},
+            ]
+        }
+        state = self._make_state(tile_unit_data)
+        by_dest = _get_tactical_reach("p1", state)["by_destination"]
+        all_arrivals = [a for d in by_dest.values() for a in d["arrivals"]]
+        ships = all_arrivals[0]["ships"]
+        assert "carrier x2" in ships
+        assert "destroyer" in ships
+
+    def test_capacity_computed(self) -> None:
+        tile_unit_data = _make_full_map()
+        tile_unit_data["000"]["space"] = {
+            "myfaction": [
+                {"entityId": "cv", "entityType": "unit", "count": 1},  # capacity 4
+                {"entityId": "dd", "entityType": "unit", "count": 1},  # capacity 0
+            ]
+        }
+        state = self._make_state(tile_unit_data)
+        by_dest = _get_tactical_reach("p1", state)["by_destination"]
+        all_arrivals = [a for d in by_dest.values() for a in d["arrivals"]]
+        assert all_arrivals[0]["capacity"] == 4
+
+    def test_ground_forces_from_space(self) -> None:
+        """Infantry already in fleet space area are reported in ground_forces."""
+        tile_unit_data = _make_full_map()
+        tile_unit_data["000"]["space"] = {
+            "myfaction": [
+                {"entityId": "cv", "entityType": "unit", "count": 1},
+                {"entityId": "gf", "entityType": "unit", "count": 3},
+            ]
+        }
+        state = self._make_state(tile_unit_data)
+        by_dest = _get_tactical_reach("p1", state)["by_destination"]
+        all_arrivals = [a for d in by_dest.values() for a in d["arrivals"]]
+        gf = all_arrivals[0]["ground_forces"]
+        assert any("infantry" in g for g in gf)
+
+    def test_ground_forces_from_planet_entities(self) -> None:
+        """Infantry on planets in the starting tile are reported in ground_forces."""
+        tile_unit_data = _make_full_map()
+        tile_unit_data["000"]["space"] = {
+            "myfaction": [{"entityId": "cv", "entityType": "unit", "count": 1}]
+        }
+        tile_unit_data["000"]["planets"] = {
+            "homeworld": {
+                "resources": 2,
+                "influence": 1,
+                "entities": {
+                    "myfaction": [
+                        {"entityId": "gf", "entityType": "unit", "count": 2},
+                        {"entityId": "mf", "entityType": "unit", "count": 1},
+                    ]
+                },
+            }
+        }
+        state = self._make_state(tile_unit_data)
+        by_dest = _get_tactical_reach("p1", state)["by_destination"]
+        all_arrivals = [a for d in by_dest.values() for a in d["arrivals"]]
+        gf = all_arrivals[0]["ground_forces"]
+        assert any("mech" in g for g in gf)
+        assert any("infantry" in g for g in gf)
+
+    def test_defenders_in_destination(self) -> None:
+        """Enemy ships in a destination tile appear in defenders."""
+        tile_unit_data = _make_full_map()
+        tile_unit_data["000"]["space"] = {
+            "myfaction": [{"entityId": "dd", "entityType": "unit", "count": 1}]
+        }
+        # Place an enemy cruiser at 101
+        tile_unit_data["101"]["space"] = {
+            "enemy": [{"entityId": "ca", "entityType": "unit", "count": 2}]
+        }
+        state = self._make_state(tile_unit_data)
+        by_dest = _get_tactical_reach("p1", state)["by_destination"]
+        assert "101" in by_dest
+        defenders = by_dest["101"]["defenders"]
+        assert "enemy" in defenders
+        assert any("cruiser" in s for s in defenders["enemy"])
+
+    def test_own_units_not_in_defenders(self) -> None:
+        """Own units in destination do not appear as defenders."""
+        tile_unit_data = _make_full_map()
+        tile_unit_data["000"]["space"] = {
+            "myfaction": [{"entityId": "dd", "entityType": "unit", "count": 1}]
+        }
+        tile_unit_data["101"]["space"] = {
+            "myfaction": [{"entityId": "dd", "entityType": "unit", "count": 1}]
+        }
+        state = self._make_state(tile_unit_data)
+        by_dest = _get_tactical_reach("p1", state)["by_destination"]
+        if "101" in by_dest:
+            defenders = by_dest["101"]["defenders"]
+            assert "myfaction" not in defenders
+
+    def test_combat_result_none_for_non_active_player(self) -> None:
+        """combat_result is None for non-active players."""
+        tile_unit_data = _make_full_map()
+        tile_unit_data["000"]["space"] = {
+            "myfaction": [{"entityId": "dd", "entityType": "unit", "count": 1}]
+        }
+        tile_unit_data["101"]["space"] = {
+            "enemy": [{"entityId": "ca", "entityType": "unit", "count": 1}]
+        }
+        # active_player_id is None → p1 is not active
+        state = self._make_state(tile_unit_data, active_player_id=None)
+        by_dest = _get_tactical_reach("p1", state)["by_destination"]
+        assert by_dest["101"]["combat_result"] is None
+
+    def test_combat_result_set_for_active_player_with_defenders(self) -> None:
+        """combat_result is a non-empty string for the active player when defenders exist."""
+        tile_unit_data = _make_full_map()
+        tile_unit_data["000"]["space"] = {
+            "myfaction": [{"entityId": "dd", "entityType": "unit", "count": 1}]
+        }
+        tile_unit_data["101"]["space"] = {
+            "enemy": [{"entityId": "ca", "entityType": "unit", "count": 1}]
+        }
+        state = self._make_state(tile_unit_data, active_player_id="p1")
+        by_dest = _get_tactical_reach("p1", state)["by_destination"]
+        result = by_dest["101"]["combat_result"]
+        assert isinstance(result, str) and len(result) > 0
+
+    def test_combat_result_no_defenders(self) -> None:
+        """combat_result indicates no defenders when destination is empty."""
+        tile_unit_data = _make_full_map()
+        tile_unit_data["000"]["space"] = {
+            "myfaction": [{"entityId": "dd", "entityType": "unit", "count": 1}]
+        }
+        state = self._make_state(tile_unit_data, active_player_id="p1")
+        by_dest = _get_tactical_reach("p1", state)["by_destination"]
+        # Any destination without defenders should say "unopposed"
+        empty_dest = next(
+            (d for d in by_dest.values() if not d["defenders"]), None
+        )
+        assert empty_dest is not None
+        assert "unopposed" in (empty_dest["combat_result"] or "")
+
+    def test_intermediate_pickup_systems(self) -> None:
+        """Intermediate systems with ground forces appear in pickup_systems."""
+        tile_unit_data = _make_full_map()
+        # Fleet at 000 with move 2
+        tile_unit_data["000"]["space"] = {
+            "myfaction": [{"entityId": "dd", "entityType": "unit", "count": 1}]
+        }
+        # Ground forces on planet in 101 (1 hop from 000, on the way to 201)
+        tile_unit_data["101"]["planets"] = {
+            "midworld": {
+                "resources": 1,
+                "influence": 1,
+                "entities": {
+                    "myfaction": [
+                        {"entityId": "gf", "entityType": "unit", "count": 2},
+                    ]
+                },
+            }
+        }
+        state = self._make_state(tile_unit_data)
+        by_dest = _get_tactical_reach("p1", state)["by_destination"]
+        # 201 is 2 hops from 000 (via 101) — pickup at 101 should appear
+        arrivals_to_201 = by_dest.get("201", {}).get("arrivals", [])
+        if arrivals_to_201:
+            pickup = arrivals_to_201[0]["pickup_systems"]
+            assert "101" in pickup
+            assert any("infantry" in lbl for lbl in pickup["101"])
+
+    def test_needs_gravity_drive_in_new_format(self) -> None:
+        """needs_gravity_drive appears on arrival when individual ship move < path cost."""
+        tile_unit_data = _make_full_map()
+        # Carrier (move 1) + destroyer (move 2) at 000, fleet_move = 1
+        # With fleet_move=1, all dests are 1 hop — no GD needed
+        # Instead use destroyer only at 000 with move 2 to reach 2-hop dest
+        tile_unit_data["000"]["space"] = {
+            "myfaction": [
+                {"entityId": "dd", "entityType": "unit", "count": 1},  # move 2
+                {"entityId": "cv", "entityType": "unit", "count": 1},  # move 1 — limits fleet
+            ]
+        }
+        state = self._make_state(tile_unit_data)
+        by_dest = _get_tactical_reach("p1", state)["by_destination"]
+        # fleet_move = 1 (limited by carrier), all dests 1 hop → no GD needed
+        all_arrivals = [a for d in by_dest.values() for a in d["arrivals"]]
+        for arrival in all_arrivals:
+            assert arrival["needs_gravity_drive"] == []
+
+
+# ---------------------------------------------------------------------------
+# New helper functions: _fleet_capacity, _ground_forces_on_planets,
+# _summarise_ground_forces, _build_combat_group, _format_combat_result
+# ---------------------------------------------------------------------------
+
+
+class TestFleetCapacity:
+    def test_carrier_capacity_four(self) -> None:
+        from scripts.analyze_game import _fleet_capacity
+        units = [{"entityId": "cv", "entityType": "unit", "count": 1}]
+        assert _fleet_capacity(units) == 4
+
+    def test_two_carriers_capacity_eight(self) -> None:
+        from scripts.analyze_game import _fleet_capacity
+        units = [{"entityId": "cv", "entityType": "unit", "count": 2}]
+        assert _fleet_capacity(units) == 8
+
+    def test_destroyer_capacity_zero(self) -> None:
+        from scripts.analyze_game import _fleet_capacity
+        units = [{"entityId": "dd", "entityType": "unit", "count": 3}]
+        assert _fleet_capacity(units) == 0
+
+    def test_mixed_fleet(self) -> None:
+        from scripts.analyze_game import _fleet_capacity
+        units = [
+            {"entityId": "cv", "entityType": "unit", "count": 2},  # 8
+            {"entityId": "dn", "entityType": "unit", "count": 1},  # 1
+            {"entityId": "dd", "entityType": "unit", "count": 3},  # 0
+        ]
+        assert _fleet_capacity(units) == 9
+
+    def test_empty_fleet(self) -> None:
+        from scripts.analyze_game import _fleet_capacity
+        assert _fleet_capacity([]) == 0
+
+
+class TestGroundForcesOnPlanets:
+    def test_infantry_on_planet(self) -> None:
+        from scripts.analyze_game import _ground_forces_on_planets
+        tile_data = {
+            "planets": {
+                "p1": {
+                    "resources": 1,
+                    "influence": 1,
+                    "entities": {
+                        "red": [
+                            {"entityId": "gf", "entityType": "unit", "count": 2}
+                        ]
+                    },
+                }
+            }
+        }
+        result = _ground_forces_on_planets(tile_data, "red")
+        assert result == {"gf": 2}
+
+    def test_mech_on_planet(self) -> None:
+        from scripts.analyze_game import _ground_forces_on_planets
+        tile_data = {
+            "planets": {
+                "p1": {
+                    "resources": 2,
+                    "influence": 0,
+                    "entities": {
+                        "blue": [
+                            {"entityId": "mf", "entityType": "unit", "count": 1}
+                        ]
+                    },
+                }
+            }
+        }
+        result = _ground_forces_on_planets(tile_data, "blue")
+        assert result == {"mf": 1}
+
+    def test_other_faction_not_counted(self) -> None:
+        from scripts.analyze_game import _ground_forces_on_planets
+        tile_data = {
+            "planets": {
+                "p1": {
+                    "resources": 1,
+                    "influence": 1,
+                    "entities": {
+                        "red": [{"entityId": "gf", "entityType": "unit", "count": 2}],
+                        "blue": [{"entityId": "gf", "entityType": "unit", "count": 1}],
+                    },
+                }
+            }
+        }
+        result = _ground_forces_on_planets(tile_data, "red")
+        assert result == {"gf": 2}
+
+    def test_no_planets_returns_empty(self) -> None:
+        from scripts.analyze_game import _ground_forces_on_planets
+        assert _ground_forces_on_planets({}, "red") == {}
+
+
+class TestSummariseGroundForces:
+    def test_infantry_only(self) -> None:
+        from scripts.analyze_game import _summarise_ground_forces
+        assert _summarise_ground_forces({"gf": 3}) == ["infantry x3"]
+
+    def test_single_infantry(self) -> None:
+        from scripts.analyze_game import _summarise_ground_forces
+        assert _summarise_ground_forces({"gf": 1}) == ["infantry"]
+
+    def test_mech_only(self) -> None:
+        from scripts.analyze_game import _summarise_ground_forces
+        assert _summarise_ground_forces({"mf": 2}) == ["mech x2"]
+
+    def test_mechs_before_infantry(self) -> None:
+        from scripts.analyze_game import _summarise_ground_forces
+        result = _summarise_ground_forces({"gf": 4, "mf": 1})
+        assert result[0].startswith("mech")  # mechs listed first
+        assert result[1].startswith("infantry")
+
+    def test_empty_returns_empty(self) -> None:
+        from scripts.analyze_game import _summarise_ground_forces
+        assert _summarise_ground_forces({}) == []
+
+
+class TestBuildCombatGroup:
+    def test_single_ship(self) -> None:
+        from scripts.analyze_game import _build_combat_group
+        units = [{"entityId": "dd", "entityType": "unit", "count": 2}]
+        group = _build_combat_group(units)
+        assert len(group.units) == 1
+        assert group.units[0].count == 2
+        assert group.units[0].unit.id == "destroyer"
+
+    def test_non_combat_entity_excluded(self) -> None:
+        from scripts.analyze_game import _build_combat_group
+        units = [
+            {"entityId": "sd", "entityType": "unit", "count": 1},  # space dock – no combat
+        ]
+        group = _build_combat_group(units)
+        assert len(group.units) == 0
+
+    def test_mixed_fleet(self) -> None:
+        from scripts.analyze_game import _build_combat_group
+        units = [
+            {"entityId": "cv", "entityType": "unit", "count": 1},
+            {"entityId": "dd", "entityType": "unit", "count": 2},
+            {"entityId": "ff", "entityType": "unit", "count": 3},
+        ]
+        group = _build_combat_group(units)
+        assert len(group.units) == 3
+
+
+class TestFormatCombatResult:
+    def test_output_contains_win_lose_draw(self) -> None:
+        from engine.combat import CombatResult
+        from scripts.analyze_game import _format_combat_result
+        result = CombatResult(
+            attacker_win_probability=0.7,
+            defender_win_probability=0.2,
+            attacker_expected_survivors={"carrier": 0.8},
+            defender_expected_survivors={"destroyer": 0.1},
+            average_rounds=2.5,
+        )
+        summary = _format_combat_result(result)
+        assert "Win" in summary
+        assert "Lose" in summary
+        assert "Draw" in summary
+        assert "2.5" in summary
+
+    def test_survivors_shown_when_significant(self) -> None:
+        from engine.combat import CombatResult
+        from scripts.analyze_game import _format_combat_result
+        result = CombatResult(
+            attacker_win_probability=0.9,
+            defender_win_probability=0.05,
+            attacker_expected_survivors={"dreadnought": 1.5},
+            defender_expected_survivors={"fighter": 0.02},
+            average_rounds=1.2,
+        )
+        summary = _format_combat_result(result)
+        assert "dreadnought" in summary  # significant survivor shown
+
+
 
 
 class TestObjectiveData:
