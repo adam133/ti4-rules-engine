@@ -42,6 +42,7 @@ _DATA_DIR = pathlib.Path(__file__).parent.parent / "data"
 _TECH_DATA_FILE = _DATA_DIR / "technologies.json"
 _OBJECTIVES_DATA_FILE = _DATA_DIR / "objectives.json"
 _LEADERS_DATA_FILE = _DATA_DIR / "leaders.json"
+_UNITS_DATA_DIR = _DATA_DIR / "units"
 
 # ---------------------------------------------------------------------------
 # Hex-grid adjacency
@@ -347,21 +348,140 @@ def _load_leader_data_cached() -> dict[str, dict[str, Any]]:
         return {}
 
 
+# Mapping from asyncti4 baseType → UnitType enum value.
+_BASE_TYPE_TO_UNIT_TYPE: dict[str, UnitType] = {
+    "carrier": UnitType.CARRIER,
+    "cruiser": UnitType.CRUISER,
+    "destroyer": UnitType.DESTROYER,
+    "dreadnought": UnitType.DREADNOUGHT,
+    "flagship": UnitType.FLAGSHIP,
+    "warsun": UnitType.WAR_SUN,
+    "fighter": UnitType.FIGHTER,
+    "infantry": UnitType.GROUND_FORCE,
+    "mech": UnitType.MECH,
+    "pds": UnitType.PDS,
+    "spacedock": UnitType.SPACE_DOCK,
+}
+
+
+def _asyncti4_unit_to_model(entry: dict[str, Any]) -> Unit | None:
+    """Convert an asyncti4 unit JSON entry to a :class:`Unit` model.
+
+    Returns ``None`` for entries whose ``baseType`` is not recognised or that
+    lack an ``asyncId`` field.
+    """
+    base_type = entry.get("baseType", "")
+    unit_type = _BASE_TYPE_TO_UNIT_TYPE.get(base_type)
+    if unit_type is None:
+        return None
+    async_id = entry.get("asyncId")
+    if not async_id:
+        return None
+    combat_hits_on = entry.get("combatHitsOn")
+    return Unit(
+        id=entry.get("id", async_id),
+        name=entry.get("name", async_id),
+        unit_type=unit_type,
+        cost=entry.get("cost"),
+        combat=combat_hits_on if isinstance(combat_hits_on, int) else None,
+        combat_rolls=entry.get("combatDieCount", 1) or 1,
+        move=entry.get("moveValue"),
+        capacity=entry.get("capacityValue", 0),
+        sustain_damage=bool(entry.get("sustainDamage", False)),
+        planetary_shield=bool(entry.get("planetaryShield", False)),
+        bombardment=entry.get("bombardHitsOn"),
+        bombardment_rolls=entry.get("bombardDieCount", 1) or 1,
+        space_cannon=entry.get("spaceCannonHitsOn"),
+        space_cannon_rolls=entry.get("spaceCannonDieCount", 1) or 1,
+    )
+
+
+def fetch_unit_data(faction: str | None = None) -> dict[str, Unit]:
+    """Return a mapping of asyncId → :class:`Unit` built from the bundled data files.
+
+    Loads ``data/units/baseUnits.json`` for the standard units.  If *faction*
+    is provided, also loads ``data/units/pok.json`` and applies any faction-
+    specific unit overrides (e.g. Titans' cruiser with capacity).
+
+    The returned dict is keyed by ``asyncId`` (e.g. ``"cv"``, ``"dd"``).
+    Where a faction has a variant of a unit type that differs from the base
+    stats, the faction variant takes precedence.
+    """
+    return _load_unit_data_cached(faction)
+
+
+@functools.cache
+def _load_unit_data_cached(faction: str | None = None) -> dict[str, Unit]:
+    """Cached implementation of :func:`fetch_unit_data`."""
+    units: dict[str, Unit] = {}
+
+    # 1. Load base units (shared by all factions).
+    try:
+        base_file = _UNITS_DATA_DIR / "baseUnits.json"
+        with base_file.open(encoding="utf-8") as fh:
+            base_entries: list[dict[str, Any]] = json.load(fh)
+        for entry in base_entries:
+            model = _asyncti4_unit_to_model(entry)
+            if model is None:
+                continue
+            async_id = entry["asyncId"]
+            # Only keep the base (non-upgraded) variant as the default – it
+            # has no "upgradesFromUnitId" field.
+            if "upgradesFromUnitId" not in entry:
+                units[async_id] = model
+    except (OSError, json.JSONDecodeError, KeyError, TypeError):
+        pass
+
+    # 2. Apply faction-specific overrides when requested.
+    if faction:
+        try:
+            pok_file = _UNITS_DATA_DIR / "pok.json"
+            with pok_file.open(encoding="utf-8") as fh:
+                pok_entries: list[dict[str, Any]] = json.load(fh)
+            for entry in pok_entries:
+                if entry.get("faction") != faction:
+                    continue
+                if "upgradesFromUnitId" in entry:
+                    # Upgraded variants are not the unit's default stats.
+                    continue
+                model = _asyncti4_unit_to_model(entry)
+                if model is None:
+                    continue
+                async_id = entry["asyncId"]
+                units[async_id] = model
+        except (OSError, json.JSONDecodeError, KeyError, TypeError):
+            pass
+
+    # Add "cr" as an alias for "ca" (cruiser) – some AsyncTI4 exports use
+    # "cr" as the entity ID for cruisers.
+    if "ca" in units and "cr" not in units:
+        units["cr"] = units["ca"]
+
+    return units
+
+
+def _build_ship_move_map(unit_data: dict[str, Unit]) -> dict[str, int]:
+    """Build a move-value lookup from a unit registry.
+
+    Only ships (units with a move value) are included; fighters are excluded
+    as they are transported rather than self-propelled.
+    """
+    fighter_type = UnitType.FIGHTER
+    return {
+        async_id: unit.move
+        for async_id, unit in unit_data.items()
+        if unit.move is not None and unit.unit_type is not fighter_type
+    }
+
+
+def _build_ship_capacity_map(unit_data: dict[str, Unit]) -> dict[str, int]:
+    """Build a capacity-value lookup (transport slots) from a unit registry."""
+    return {async_id: unit.capacity for async_id, unit in unit_data.items()}
+
+
 # ---------------------------------------------------------------------------
 # Fleet movement BFS
 # ---------------------------------------------------------------------------
-
-# Move values for standard TI4 unit types (entity IDs from AsyncTI4 exports).
-# Fighters are transported and excluded from fleet move calculation.
-_SHIP_MOVE: dict[str, int] = {
-    "cv": 1,   # carrier
-    "dd": 2,   # destroyer
-    "ca": 2,   # cruiser (alternate ID)
-    "cr": 2,   # cruiser
-    "dn": 1,   # dreadnought
-    "fs": 1,   # flagship (conservative default)
-    "ws": 3,   # war sun
-}
 
 # Human-readable names for the unit entity IDs used in AsyncTI4 exports.
 # Note: cruisers appear as both 'ca' and 'cr' depending on the faction/upgrade;
@@ -388,70 +508,40 @@ _TRANSPORTED_UNITS = frozenset({"ff", "gf", "mf"})  # fighter, ground force, mec
 # Ground-force unit entity IDs (infantry and mechs live on planets).
 _GROUND_FORCE_IDS = frozenset({"gf", "mf"})
 
+# Unit registries built from data/units/baseUnits.json.
+# These are populated at first use via fetch_unit_data().
+# Faction-specific lookups can be built with fetch_unit_data(faction).
+_COMBAT_UNITS: dict[str, Unit] = fetch_unit_data()
+
+# Move values for standard TI4 unit types (entity IDs from AsyncTI4 exports).
+# Built from the base unit data.  Fighters are excluded (they are transported).
+_SHIP_MOVE: dict[str, int] = _build_ship_move_map(_COMBAT_UNITS)
+
 # Transport capacity per ship type (entity ID → slots for ground forces / fighters).
-_SHIP_CAPACITY: dict[str, int] = {
-    "cv": 4,   # carrier
-    "dn": 1,   # dreadnought (base; Advance Carrier upgrade gives 2)
-    "fs": 3,   # flagship (generic conservative default)
-    "ws": 6,   # war sun
-    "dd": 0,   # destroyer
-    "ca": 0,   # cruiser
-    "cr": 0,   # cruiser
-}
-
-# Standard TI4 unit definitions used for Monte Carlo combat simulations.
-# Note: cruisers use both entity IDs 'ca' and 'cr' in AsyncTI4 exports
-# (faction-dependent or upgrade-dependent).  Both map to identical stats.
-_COMBAT_UNITS: dict[str, Unit] = {
-    "cv": Unit(
-        id="carrier", name="Carrier", unit_type=UnitType.CARRIER,
-        cost=3, combat=9, move=1, capacity=4,
-    ),
-    "dd": Unit(
-        id="destroyer", name="Destroyer", unit_type=UnitType.DESTROYER,
-        cost=1, combat=9, move=2,
-    ),
-    "ca": Unit(
-        id="cruiser", name="Cruiser", unit_type=UnitType.CRUISER,
-        cost=2, combat=7, move=2,
-    ),
-    "cr": Unit(
-        id="cruiser", name="Cruiser", unit_type=UnitType.CRUISER,
-        cost=2, combat=7, move=2,
-    ),
-    "dn": Unit(
-        id="dreadnought", name="Dreadnought", unit_type=UnitType.DREADNOUGHT,
-        cost=4, combat=5, combat_rolls=1, move=1, capacity=1,
-        bombardment=5, bombardment_rolls=1, sustain_damage=True,
-    ),
-    "fs": Unit(
-        id="flagship", name="Flagship", unit_type=UnitType.FLAGSHIP,
-        cost=8, combat=7, combat_rolls=2, move=1, capacity=3, sustain_damage=True,
-    ),
-    "ws": Unit(
-        id="war_sun", name="War Sun", unit_type=UnitType.WAR_SUN,
-        cost=12, combat=3, combat_rolls=3, move=3, capacity=6,
-        bombardment=3, bombardment_rolls=3, sustain_damage=True,
-    ),
-    "ff": Unit(
-        id="fighter", name="Fighter", unit_type=UnitType.FIGHTER,
-        cost=0.5, combat=9, move=0,
-    ),
-}
+# Built from the base unit data.
+_SHIP_CAPACITY: dict[str, int] = _build_ship_capacity_map(_COMBAT_UNITS)
 
 
-def _fleet_move_value(units: list[dict[str, Any]]) -> int:
+def _fleet_move_value(
+    units: list[dict[str, Any]],
+    ship_move: dict[str, int] | None = None,
+) -> int:
     """Return the minimum move value for a collection of space units.
 
     Only non-transported ships contribute to the fleet's movement range.
     Returns 0 when the list contains no mobile ships.
+
+    *ship_move* defaults to the base-game :data:`_SHIP_MOVE` lookup; pass a
+    faction-specific dict (built via :func:`_build_ship_move_map`) to honour
+    faction unit variants.
     """
+    move_map = ship_move if ship_move is not None else _SHIP_MOVE
     move_vals = [
-        _SHIP_MOVE[u["entityId"]]
+        move_map[u["entityId"]]
         for u in units
         if isinstance(u, dict)
         and u.get("entityType") == "unit"
-        and u.get("entityId") in _SHIP_MOVE
+        and u.get("entityId") in move_map
     ]
     return min(move_vals) if move_vals else 0
 
@@ -479,14 +569,23 @@ def _summarise_units(units: list[dict[str, Any]]) -> list[str]:
     return parts
 
 
-def _fleet_capacity(units: list[dict[str, Any]]) -> int:
-    """Return the total transport capacity of a fleet (sum across all ships)."""
+def _fleet_capacity(
+    units: list[dict[str, Any]],
+    ship_capacity: dict[str, int] | None = None,
+) -> int:
+    """Return the total transport capacity of a fleet (sum across all ships).
+
+    *ship_capacity* defaults to the base-game :data:`_SHIP_CAPACITY` lookup;
+    pass a faction-specific dict (built via :func:`_build_ship_capacity_map`)
+    to honour faction unit variants (e.g. Titans' cruiser with capacity 1).
+    """
+    cap_map = ship_capacity if ship_capacity is not None else _SHIP_CAPACITY
     total = 0
     for u in units:
         if not isinstance(u, dict) or u.get("entityType") != "unit":
             continue
         eid = u.get("entityId", "")
-        cap = _SHIP_CAPACITY.get(eid, 0)
+        cap = cap_map.get(eid, 0)
         total += cap * u.get("count", 1)
     return total
 
@@ -543,23 +642,31 @@ def _summarise_ground_forces(gf_counts: dict[str, int]) -> list[str]:
     return parts
 
 
-def _build_combat_group(units: list[dict[str, Any]]) -> CombatGroup:
+def _build_combat_group(
+    units: list[dict[str, Any]],
+    combat_units: dict[str, Unit] | None = None,
+) -> CombatGroup:
     """Build a :class:`CombatGroup` from a list of raw unit dicts.
 
-    Only units present in :data:`_COMBAT_UNITS` (ships and fighters) with a
-    defined ``combat`` stat are included.
+    Only units with a defined ``combat`` stat are included.
+
+    *combat_units* defaults to the base-game :data:`_COMBAT_UNITS` registry;
+    pass a faction-specific dict (built via :func:`fetch_unit_data`) to use
+    faction-specific unit stats (e.g. Titans' Saturn Engine, Sol Advanced
+    Carrier, etc.).
     """
-    combat_units: list[CombatUnit] = []
+    unit_registry = combat_units if combat_units is not None else _COMBAT_UNITS
+    cu_list: list[CombatUnit] = []
     for u in units:
         if not isinstance(u, dict) or u.get("entityType") != "unit":
             continue
         eid = u.get("entityId", "")
-        unit_def = _COMBAT_UNITS.get(eid)
+        unit_def = unit_registry.get(eid)
         if unit_def is None or unit_def.combat is None:
             continue
         count = u.get("count", 1)
-        combat_units.append(CombatUnit(unit_def, count))
-    return CombatGroup(combat_units)
+        cu_list.append(CombatUnit(unit_def, count))
+    return CombatGroup(cu_list)
 
 
 def _format_combat_result(result: CombatResult) -> str:
@@ -813,6 +920,11 @@ def _get_tactical_reach(
 
     has_amd = "amd" in (player.researched_technologies or [])
 
+    # Load faction-specific unit data for movement / capacity / combat calcs.
+    faction_units = fetch_unit_data(faction)
+    faction_ship_move = _build_ship_move_map(faction_units)
+    faction_ship_capacity = _build_ship_capacity_map(faction_units)
+
     # by_destination[pos] = {planets, arrivals, defenders, combat_result}
     by_destination: dict[str, dict[str, Any]] = {}
     no_adjacency: list[str] = []
@@ -825,7 +937,7 @@ def _get_tactical_reach(
         if faction in tile_data.get("ccs", []):
             continue
         fleet_units: list[dict[str, Any]] = space[faction]
-        fleet_move = _fleet_move_value(fleet_units)
+        fleet_move = _fleet_move_value(fleet_units, faction_ship_move)
         if fleet_move <= 0:
             continue
 
@@ -845,7 +957,7 @@ def _get_tactical_reach(
             continue
 
         unit_labels = _summarise_units(fleet_units)
-        capacity = _fleet_capacity(fleet_units)
+        capacity = _fleet_capacity(fleet_units, faction_ship_capacity)
 
         # Ground forces already in the fleet (in space area + on planets in starting tile)
         gf_space = _ground_forces_in_space(fleet_units)
@@ -899,9 +1011,9 @@ def _get_tactical_reach(
                 if not isinstance(u, dict) or u.get("entityType") != "unit":
                     continue
                 eid = u.get("entityId", "")
-                if eid not in _SHIP_MOVE:
+                if eid not in faction_ship_move:
                     continue
-                ind_move = _SHIP_MOVE[eid]
+                ind_move = faction_ship_move[eid]
                 if ind_move < path_cost:
                     label = _UNIT_NAMES.get(eid, eid)
                     cnt = u.get("count", 1)
@@ -967,7 +1079,7 @@ def _get_tactical_reach(
                 from_space.get(faction) or []
             ) if isinstance(from_space, dict) else []
 
-            attacker_group = _build_combat_group(attacker_raw)
+            attacker_group = _build_combat_group(attacker_raw, faction_units)
             if not attacker_group.units:
                 dest_data["combat_result"] = "(attacker has no combat-capable ships)"
                 continue

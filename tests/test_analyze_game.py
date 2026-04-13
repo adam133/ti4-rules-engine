@@ -1255,9 +1255,9 @@ class TestCombatUnitStats:
         from scripts.analyze_game import _COMBAT_UNITS
         assert _COMBAT_UNITS["dn"].combat_rolls == 1
 
-    def test_war_sun_move_is_three(self) -> None:
+    def test_war_sun_move_is_two(self) -> None:
         from scripts.analyze_game import _COMBAT_UNITS
-        assert _COMBAT_UNITS["ws"].move == 3
+        assert _COMBAT_UNITS["ws"].move == 2
 
     def test_flagship_capacity_is_three(self) -> None:
         from scripts.analyze_game import _COMBAT_UNITS
@@ -1270,3 +1270,29 @@ class TestCombatUnitStats:
     def test_fighter_cost_is_half(self) -> None:
         from scripts.analyze_game import _COMBAT_UNITS
         assert _COMBAT_UNITS["ff"].cost == 0.5
+
+    def test_war_sun_move_loaded_from_data_file(self) -> None:
+        """War Sun base move is 2 (per asyncti4 baseUnits.json), not 3."""
+        from scripts.analyze_game import _SHIP_MOVE
+        assert _SHIP_MOVE.get("ws") == 2
+
+    def test_titans_cruiser_has_capacity(self) -> None:
+        """Titans' Saturn Engine I has capacity=1 (faction-specific override)."""
+        from scripts.analyze_game import fetch_unit_data
+        titans = fetch_unit_data("titans")
+        cruiser = titans.get("ca")
+        assert cruiser is not None
+        assert cruiser.capacity == 1
+        assert cruiser.name == "Saturn Engine I"
+
+    def test_base_cruiser_has_no_capacity(self) -> None:
+        """Base game cruiser has capacity=0."""
+        from scripts.analyze_game import _COMBAT_UNITS
+        assert _COMBAT_UNITS["ca"].capacity == 0
+
+    def test_unit_data_loaded_from_files(self) -> None:
+        """_COMBAT_UNITS should be populated from data files, not empty."""
+        from scripts.analyze_game import _COMBAT_UNITS
+        assert len(_COMBAT_UNITS) >= 8  # at least the standard ship types
+        assert "cv" in _COMBAT_UNITS
+        assert "ws" in _COMBAT_UNITS
