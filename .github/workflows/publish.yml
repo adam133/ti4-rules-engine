@@ -19,7 +19,7 @@ jobs:
           python-version: "3.14"
 
       - name: Install Dependencies
-        run: pip install .
+        run: pip install ".[dev]"
 
       - name: Run Unit Tests
         run: python -m pytest tests
