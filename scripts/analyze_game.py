@@ -37,8 +37,8 @@ WEB_DATA_URL_TEMPLATE = (
     "https://bot.asyncti4.com/api/public/game/{game}/web-data"
 )
 
-# Path to the bundled data files (data/ at repo root).
-_DATA_DIR = pathlib.Path(__file__).parent.parent / "data"
+# Path to the bundled data files (data/ inside the scripts package).
+_DATA_DIR = pathlib.Path(__file__).parent / "data"
 _TECH_DATA_FILE = _DATA_DIR / "technologies.json"
 _OBJECTIVES_DATA_FILE = _DATA_DIR / "objectives.json"
 _LEADERS_DATA_FILE = _DATA_DIR / "leaders.json"

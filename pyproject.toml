@@ -7,7 +7,7 @@ name = "ti4-rules-engine"
 version = "0.1.0"
 description = "A Pythonic, structured data engine for Twilight Imperium 4th Edition"
 readme = "README.md"
-requires-python = ">=3.14"
+requires-python = ">=3.12"
 license = { file = "LICENSE" }
 dependencies = [
     "pydantic>=2.0",
@@ -27,7 +27,7 @@ ti4-analyze = "scripts.analyze_game:main"
 
 [tool.ruff]
 line-length = 100
-target-version = "py314"
+target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]
