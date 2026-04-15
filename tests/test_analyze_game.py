@@ -747,6 +747,8 @@ class TestTacticalReachByDestination:
         assert "201" in by_dest  # two hops away from 000
 
     def test_space_dock_fighter_capacity_blocks_fighter_ii_excess(self) -> None:
+        from ti4_rules_engine.scripts.analyze_game import _fighter_excess_count_for_movement
+
         tile_unit_data = _make_full_map()
         tile_unit_data["000"]["space"] = {
             "myfaction": [{"entityId": "ff", "entityType": "unit", "count": 3}]
@@ -760,6 +762,12 @@ class TestTacticalReachByDestination:
                 },
             }
         }
+        excess = _fighter_excess_count_for_movement(
+            tile_unit_data["000"]["space"]["myfaction"],
+            tile_unit_data["000"],
+            "myfaction",
+        )
+        assert excess == 0
         state = self._make_state(tile_unit_data, researched_technologies=["ff2"])
         by_dest = _get_tactical_reach("p1", state)["by_destination"]
         assert by_dest == {}
