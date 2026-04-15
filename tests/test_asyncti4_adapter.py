@@ -216,7 +216,7 @@ class TestPhaseInference:
         # This should still be action phase because strategy picking is complete.
         p1 = {**SAMPLE_PLAYER_1, "userName": "p1", "faction": "jolnar", "scs": [1, 5]}
         p2 = {**SAMPLE_PLAYER_2, "userName": "p2", "faction": "sol", "scs": [2, 6]}
-        p3 = {**SAMPLE_PLAYER_2, "userName": "p3", "faction": "hacan", "scs": [3, 7]}
+        p3 = {**SAMPLE_PLAYER_1, "userName": "p3", "faction": "hacan", "scs": [3, 7]}
         data = {
             **SAMPLE_DATA,
             "playerData": [p1, p2, p3],
