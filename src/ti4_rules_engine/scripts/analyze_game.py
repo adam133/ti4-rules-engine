@@ -42,6 +42,7 @@ WEB_DATA_URL_TEMPLATE = (
 _DATA_DIR = pathlib.Path(__file__).parent.parent / "data"
 _TECH_DATA_FILE = _DATA_DIR / "technologies.json"
 _OBJECTIVES_DATA_FILE = _DATA_DIR / "objectives.json"
+_PUBLIC_OBJECTIVES_DATA_FILE = _DATA_DIR / "public_objectives.json"
 _LEADERS_DATA_FILE = _DATA_DIR / "leaders.json"
 _HYPERLANES_DATA_FILE = _DATA_DIR / "hyperlanes.json"
 _UNITS_DATA_DIR = _DATA_DIR / "units"
@@ -459,8 +460,8 @@ def fetch_objective_data() -> dict[str, dict[str, Any]]:
     """Load full objective data from the bundled data file.
 
     Returns a dict mapping objective ID (e.g. ``"expand_borders"``) to the full
-    objective record ``{"id", "name", "type", "points", "description"}``.
-    Ported from the AsyncTI4 bot and stored in ``data/objectives.json``.
+    objective record. Data is loaded from ``data/objectives.json`` and from
+    ``data/public_objectives.json`` (ported from the AsyncTI4 bot).
     Falls back to an empty dict if the file cannot be read.
     Results are cached after the first call.
     """
@@ -470,30 +471,93 @@ def fetch_objective_data() -> dict[str, dict[str, Any]]:
 @functools.cache
 def _load_objective_data_cached() -> dict[str, dict[str, Any]]:
     """Cached implementation of :func:`fetch_objective_data`."""
+    objective_data: dict[str, dict[str, Any]] = {}
     try:
         with _OBJECTIVES_DATA_FILE.open(encoding="utf-8") as fh:
             objectives: list[dict[str, Any]] = json.load(fh)
-        return {
-            obj["id"]: obj
-            for obj in objectives
-            if isinstance(obj, dict) and "id" in obj
-        }
+        objective_data.update(
+            {
+                obj["id"]: obj
+                for obj in objectives
+                if isinstance(obj, dict) and "id" in obj
+            }
+        )
     except (OSError, json.JSONDecodeError, KeyError, TypeError) as exc:
         print(
             f"Warning: could not load objective data from {_OBJECTIVES_DATA_FILE} ({exc!r}); "
             "showing raw objective IDs.",
             file=sys.stderr,
         )
-        return {}
+
+    try:
+        with _PUBLIC_OBJECTIVES_DATA_FILE.open(encoding="utf-8") as fh:
+            public_objectives: list[dict[str, Any]] = json.load(fh)
+        for obj in public_objectives:
+            if not isinstance(obj, dict):
+                continue
+            alias = obj.get("alias")
+            if not alias:
+                continue
+            text = obj.get("text")
+            notes = obj.get("notes")
+            description = text
+            if text and notes:
+                description = f"{text} Note: {notes}"
+            public_entry: dict[str, Any] = {
+                "id": alias,
+                "name": obj.get("name", alias),
+                "points": obj.get("points"),
+                "description": description,
+                "source": obj.get("source"),
+            }
+            if obj.get("points") == 1:
+                public_entry["type"] = "stage_1"
+            elif obj.get("points") == 2:
+                public_entry["type"] = "stage_2"
+            else:
+                public_entry["type"] = "public"
+            if alias in objective_data:
+                # Keep existing local data but backfill missing condition text.
+                if not _get_objective_condition_text(objective_data[alias]):
+                    objective_data[alias]["description"] = description
+            else:
+                objective_data[alias] = public_entry
+    except (OSError, json.JSONDecodeError, KeyError, TypeError):
+        pass
+
+    if objective_data:
+        return objective_data
+    return {}
+
+
+def _get_objective_condition_text(obj: dict[str, Any]) -> str:
+    """Return the best available condition text for an objective record."""
+    return str(
+        obj.get("description")
+        or obj.get("condition")
+        or obj.get("text")
+        or ""
+    )
+
+
+def _get_objective_stage_label(obj: dict[str, Any]) -> str:
+    """Infer a human-readable stage label from objective metadata."""
+    obj_type = obj.get("type")
+    points = obj.get("points")
+    if obj_type == "stage_1" or points == 1:
+        return "Stage I"
+    if obj_type == "stage_2" or points == 2:
+        return "Stage II"
+    return "Public"
 
 
 def _format_objective(obj_id: str, obj_data: dict[str, dict[str, Any]]) -> str:
-    """Return a display string for an objective, using full name and description if available."""
+    """Return a display string for an objective with score and condition text."""
     if obj_id not in obj_data:
         return obj_id
     rec = obj_data[obj_id]
     name = rec.get("name", obj_id)
-    desc = rec.get("description", "")
+    desc = _get_objective_condition_text(rec)
     pts = rec.get("points", "")
     pt_str = f" [{pts}VP]" if pts else ""
     if desc:
@@ -1895,10 +1959,10 @@ def print_game_summary(state: GameState) -> None:
         for obj_id in state.public_objectives:
             rec = obj_data.get(obj_id)
             if rec:
-                stage = "Stage I" if rec.get("type") == "stage_1" else "Stage II"
+                stage = _get_objective_stage_label(rec)
                 pts = rec.get("points", "?")
                 name = rec.get("name", obj_id)
-                desc = rec.get("description", "")
+                desc = _get_objective_condition_text(rec)
                 print(f"    [{stage}, {pts}VP] {name}")
                 if desc:
                     print(f"      {desc}")
