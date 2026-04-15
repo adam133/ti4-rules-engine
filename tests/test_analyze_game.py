@@ -1006,13 +1006,66 @@ class TestFullMapSummary:
 
         lines = _build_full_map_lines(state)
         out = "\n".join(lines)
-        assert "000 (tile 18)" in out
-        assert "101 (tile 19)" in out
+        assert "000 (Mecatol Rex)" in out
+        assert "101 (Wellon)" in out
         assert "CCs: red" in out
         assert "space/red: carrier, fighter x2" in out
-        assert "space/neutral: frontier" in out
+        assert "space/neutral: frontier (explore token when this system is activated)" in out
         assert "planet/mecatol/red: space dock" in out
         assert "(no units/tokens)" in out
+
+    def test_build_full_map_lines_includes_system_and_attachment_metadata(self) -> None:
+        from ti4_rules_engine.models.state import GameState, PlayerState, TurnOrder
+        from ti4_rules_engine.scripts.analyze_game import _build_full_map_lines
+
+        tile_unit_data = {
+            "201": {
+                "ccs": [],
+                "space": {
+                    "neutral": [{"entityId": "frontier", "entityType": "token", "count": 1}],
+                },
+                "planets": {
+                    "quann": {
+                        "entities": {
+                            "neutral": [
+                                {"entityId": "paradiseworld", "entityType": "token", "count": 1}
+                            ]
+                        }
+                    }
+                },
+            },
+            "000": {
+                "ccs": [],
+                "space": {},
+                "planets": {
+                    "mrte": {
+                        "entities": {
+                            "neutral": [
+                                {"entityId": "negativeinf", "entityType": "token", "count": 1}
+                            ]
+                        }
+                    }
+                },
+            },
+        }
+        state = GameState(
+            game_id="g",
+            turn_order=TurnOrder(speaker_id="p1", order=["p1"]),
+            players={"p1": PlayerState(player_id="p1", faction_id="red")},
+            extra={"tile_unit_data": tile_unit_data, "tile_positions": {"201": "25", "000": "112"}},
+        )
+
+        lines = _build_full_map_lines(state)
+        out = "\n".join(lines)
+
+        assert "201 (Quann)" in out
+        assert "anomalies:" not in out
+        assert "wormholes: beta" in out
+        assert "planet/quann (Quann | R2/I1)/neutral: Paradise World (+2 influence)" in out
+
+        assert "000 (Mecatol Rex)" in out
+        assert "planet/mrte (Mecatol Rex | R1/I6 | legendary: The Galactic Council" in out
+        assert "negativeinf (-1 influence)" in out
 
 
 class TestGroundForcesOnPlanets:
