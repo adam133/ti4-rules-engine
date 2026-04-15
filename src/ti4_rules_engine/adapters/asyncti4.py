@@ -280,7 +280,9 @@ def _infer_phase(data: AsyncTI4GameData) -> GamePhase:
 
     * If no strategy cards exist in the export → **STRATEGY** phase (default).
     * If any strategy card has been played (primary ability used) → **ACTION** phase.
-    * If all strategy cards have been picked → **ACTION** phase (picking complete).
+    * If picked card count reached the expected total for the current player
+      count (allowing unpicked skipped cards) → **ACTION** phase.
+    * If all strategy cards have been picked → **ACTION** phase.
     * Otherwise → **STRATEGY** phase (picking still in progress).
 
     The heuristic cannot distinguish between the Action, Status, and Agenda
@@ -294,14 +296,23 @@ def _infer_phase(data: AsyncTI4GameData) -> GamePhase:
     if any(sc.played for sc in data.strategyCards):
         return GamePhase.ACTION
 
-    # In multi-player games not all 8 cards are picked (2 are typically skipped).
-    # Check whether the cards that are available have all been picked.
+    # In many games not all 8 cards are picked (some are skipped based on player
+    # count). Infer expected picks from non-eliminated, non-neutral players.
     picked_cards = [sc for sc in data.strategyCards if sc.picked]
     unpicked_cards = [sc for sc in data.strategyCards if not sc.picked]
 
-    # If at least one card is picked and none remain unpicked beyond the
-    # expected skipped count, treat as action phase.  As a conservative rule:
-    # if there are any picked cards and no unpicked cards, it's action phase.
+    active_players = [
+        p
+        for p in data.playerData
+        if not p.eliminated and p.faction.lower() != "neutral"
+    ]
+    player_count = len(active_players)
+    if player_count > 0:
+        expected_picks = (len(data.strategyCards) // player_count) * player_count
+        if expected_picks > 0 and len(picked_cards) >= expected_picks:
+            return GamePhase.ACTION
+
+    # Fallback when expected picks cannot be inferred.
     if picked_cards and not unpicked_cards:
         return GamePhase.ACTION
 

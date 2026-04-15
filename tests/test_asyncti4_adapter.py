@@ -211,6 +211,29 @@ class TestFromAsyncTI4:
 
 
 class TestPhaseInference:
+    def test_action_phase_when_expected_pick_count_reached_with_skipped_cards(self) -> None:
+        # 3-player game: 6 of 8 cards picked (2 skipped), none played yet.
+        # This should still be action phase because strategy picking is complete.
+        p1 = {**SAMPLE_PLAYER_1, "userName": "p1", "faction": "jolnar", "scs": [1, 5]}
+        p2 = {**SAMPLE_PLAYER_2, "userName": "p2", "faction": "sol", "scs": [2, 6]}
+        p3 = {**SAMPLE_PLAYER_2, "userName": "p3", "faction": "hacan", "scs": [3, 7]}
+        data = {
+            **SAMPLE_DATA,
+            "playerData": [p1, p2, p3],
+            "strategyCards": [
+                {"id": "pok1leadership", "initiative": 1, "picked": True, "played": False},
+                {"id": "pok2diplomacy", "initiative": 2, "picked": True, "played": False},
+                {"id": "pok3politics", "initiative": 3, "picked": True, "played": False},
+                {"id": "te4construction", "initiative": 4, "picked": False, "played": False},
+                {"id": "pok5trade", "initiative": 5, "picked": True, "played": False},
+                {"id": "te6warfare", "initiative": 6, "picked": True, "played": False},
+                {"id": "pok7technology", "initiative": 7, "picked": True, "played": False},
+                {"id": "pok8imperial", "initiative": 8, "picked": False, "played": False},
+            ],
+        }
+        state = from_asyncti4(data)
+        assert state.phase == GamePhase.ACTION
+
     def test_action_phase_when_all_cards_picked(self) -> None:
         # All strategy cards picked but none played → action phase (picking complete)
         data = {
