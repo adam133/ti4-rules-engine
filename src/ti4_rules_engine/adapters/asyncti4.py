@@ -458,8 +458,8 @@ def from_asyncti4(data: dict[str, Any] | AsyncTI4GameData) -> GameState:
     # web-data API objectives block.  The API uses "pointValue" instead of
     # "points" and includes "name" and optionally "description" for each entry.
     # This data is stored in extra["objective_data"] so that analyze_game.py can
-    # show proper names and descriptions for objectives that are not in the
-    # bundled objectives.json (e.g. expansion objectives, custom objectives).
+    # show proper names and descriptions for objectives not present in the
+    # bundled public_objectives.json (e.g. expansion/custom objectives).
     api_objective_data: dict[str, dict[str, Any]] = {}
     if data.objectives:
         for sublist_key in ("stage1Objectives", "stage2Objectives", "customObjectives"):
