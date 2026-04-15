@@ -1,0 +1,22 @@
+{
+    "id": "kostboth",
+    "tileId": "108",
+    "name": "Kostboth",
+    "aliases": [
+        "kostboth"
+    ],
+    "resources": 0,
+    "influence": 1,
+    "planetTypes": [
+        "CULTURAL"
+    ],
+    "planetLayout": {
+        "unitHolderName": "kostboth",
+        "resourcesLocation": "TopLeft",
+        "centerPosition": {
+            "x": 136,
+            "y": 90
+        }
+    },
+    "source": "thunders_edge"
+}
