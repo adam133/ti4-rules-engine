@@ -434,13 +434,14 @@ class TestGetReachInfo:
         )
         reach = _get_tactical_reach("p1", state)
         by_dest = reach["by_destination"]
-        # Fleet move is 1 (limited by carrier), so only 1-hop destinations
+        # Mixed-speed fleets now include faster-ship detachments.
         all_arrivals = [a for d in by_dest.values() for a in d["arrivals"]]
         assert len(all_arrivals) > 0
         # All arrivals originate from 000
         assert all(a["from_pos"] == "000" for a in all_arrivals)
-        assert all(a["fleet_move"] == 1 for a in all_arrivals)
-        # All destinations are 1 hop (fleet_move=1); no gravity drive needed
+        assert any(a["fleet_move"] == 1 for a in all_arrivals)
+        assert any(a["fleet_move"] == 2 for a in all_arrivals)
+        # No arrival should require gravity drive in this open-map setup.
         for dest_data in by_dest.values():
             for arrival in dest_data["arrivals"]:
                 assert arrival["needs_gravity_drive"] == []
@@ -934,6 +935,29 @@ class TestTacticalReachByDestination:
         all_arrivals = [a for d in by_dest.values() for a in d["arrivals"]]
         for arrival in all_arrivals:
             assert arrival["needs_gravity_drive"] == []
+
+    def test_mixed_speed_fleet_includes_fast_detachment_destinations(self) -> None:
+        """A faster ship in a mixed-speed fleet can create farther destinations."""
+        tile_unit_data = _make_full_map()
+        tile_unit_data["000"]["space"] = {
+            "myfaction": [
+                {"entityId": "dd", "entityType": "unit", "count": 1},  # move 2
+                {"entityId": "cv", "entityType": "unit", "count": 1},  # move 1
+            ]
+        }
+        state = self._make_state(tile_unit_data)
+        by_dest = _get_tactical_reach("p1", state)["by_destination"]
+
+        # 201 is two hops from 000 in this test map.
+        assert "201" in by_dest
+        detachment_arrivals = [
+            a
+            for a in by_dest["201"]["arrivals"]
+            if a["from_pos"] == "000" and a["ships"] == ["destroyer"]
+        ]
+        assert detachment_arrivals
+        assert all(a["fleet_move"] == 2 for a in detachment_arrivals)
+        assert all(a["capacity"] == 0 for a in detachment_arrivals)
 
 
 # ---------------------------------------------------------------------------
