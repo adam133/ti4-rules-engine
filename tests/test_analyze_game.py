@@ -654,6 +654,7 @@ class TestTacticalReachByDestination:
     def _make_state(
         self,
         tile_unit_data: dict,
+        tile_positions: dict[str, str] | None = None,
         faction: str = "myfaction",
         player_id: str = "p1",
         active_player_id: str | None = None,
@@ -673,7 +674,7 @@ class TestTacticalReachByDestination:
                     researched_technologies=researched_technologies or [],
                 )
             },
-            extra={"tile_unit_data": tile_unit_data, "tile_positions": {}},
+            extra={"tile_unit_data": tile_unit_data, "tile_positions": tile_positions or {}},
         )
 
     def test_returns_by_destination_key(self) -> None:
@@ -894,7 +895,7 @@ class TestTacticalReachByDestination:
         tile_unit_data = _make_full_map()
         # Fleet at 000 with move 2
         tile_unit_data["000"]["space"] = {
-            "myfaction": [{"entityId": "dd", "entityType": "unit", "count": 1}]
+            "myfaction": [{"entityId": "cv", "entityType": "unit", "count": 1}]
         }
         # Ground forces on planet in 101 (1 hop from 000, on the way to 201)
         tile_unit_data["101"]["planets"] = {
@@ -958,6 +959,63 @@ class TestTacticalReachByDestination:
         assert detachment_arrivals
         assert all(a["fleet_move"] == 2 for a in detachment_arrivals)
         assert all(a["capacity"] == 0 for a in detachment_arrivals)
+
+    def test_hyperlane_fallback_allows_expected_branching_paths(self) -> None:
+        tile_unit_data = _make_full_map()
+        tile_unit_data["307"] = _make_tile_data()
+        tile_unit_data["307"]["space"] = {
+            "myfaction": [{"entityId": "dd", "entityType": "unit", "count": 1}]
+        }
+        tile_positions = {
+            pos: "1" for pos in tile_unit_data
+        }
+        tile_positions.update({
+            "204": "87a240",
+            "206": "88a",
+        })
+        state = self._make_state(tile_unit_data, tile_positions=tile_positions)
+        by_dest = _get_tactical_reach("p1", state)["by_destination"]
+        assert "205" in by_dest
+        assert "203" in by_dest
+        assert "207" in by_dest
+
+    def test_zero_capacity_detachment_has_no_ground_forces(self) -> None:
+        tile_unit_data = _make_full_map()
+        tile_unit_data["307"] = _make_tile_data()
+        tile_unit_data["307"]["space"] = {
+            "myfaction": [
+                {"entityId": "cv", "entityType": "unit", "count": 2},
+                {"entityId": "dd", "entityType": "unit", "count": 1},
+                {"entityId": "ff", "entityType": "unit", "count": 2},
+            ]
+        }
+        tile_unit_data["307"]["planets"] = {
+            "homeworld": {
+                "resources": 3,
+                "influence": 4,
+                "entities": {
+                    "myfaction": [
+                        {"entityId": "gf", "entityType": "unit", "count": 4},
+                    ]
+                },
+            }
+        }
+        state = self._make_state(tile_unit_data)
+        by_dest = _get_tactical_reach("p1", state)["by_destination"]
+        arrivals_to_205 = by_dest.get("205", {}).get("arrivals", [])
+
+        destroyer_arrivals = [a for a in arrivals_to_205 if a["ships"] == ["destroyer"]]
+        assert destroyer_arrivals
+        assert destroyer_arrivals[0]["capacity"] == 0
+        assert destroyer_arrivals[0]["ground_forces"] == []
+        assert destroyer_arrivals[0]["transported_units"] == []
+
+        carrier_arrivals = [
+            a for a in arrivals_to_205
+            if "carrier x2" in a["ships"] and "destroyer" in a["ships"]
+        ]
+        assert carrier_arrivals
+        assert any("fighter x2" in a["transported_units"] for a in carrier_arrivals)
 
 
 # ---------------------------------------------------------------------------
