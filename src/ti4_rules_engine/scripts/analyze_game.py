@@ -355,10 +355,13 @@ def _build_hyperlane_adjacency(
         for hl_neighbor in hl_neighbors:
             hl_tile_id = tile_positions.get(hl_neighbor, "")
             dests = _traverse(hl_neighbor, pos, frozenset())
-            if not dests and len(hl_neighbors) >= 2:
-                # Fallback for maps whose edge orientation metadata does not align
-                # with this position ordering: try all possible entry rows on the
-                # first hyperlane tile, then continue strict traversal.
+            if (
+                not dests
+                and len(hl_neighbors) >= _MIN_HYPERLANE_NEIGHBORS_FOR_FALLBACK
+            ):
+                # Fallback for maps whose hyperlane tile rotation metadata does not
+                # align with this position ordering: try all possible entry rows on
+                # the first hyperlane tile, then continue strict traversal.
                 matrix = connections.get(hl_tile_id)
                 if matrix is not None:
                     neighbors = get_adjacent_positions(hl_neighbor)
@@ -776,6 +779,9 @@ _SPACE_DOCK_ENTITY_ID = "sd"
 _FIGHTER_II_TECH_ID = "ff2"
 _DEFAULT_SPACE_DOCK_FIGHTER_CAPACITY = 3
 _FIGHTER_II_MOVE_SPEED = 2
+# Entry-agnostic fallback is only enabled when a source has 2+ adjacent
+# hyperlane connectors (branch points), where rotation mismatches are most likely.
+_MIN_HYPERLANE_NEIGHBORS_FOR_FALLBACK = 2
 
 # Unit registries built from data/units/baseUnits.json.
 # These are populated at first use via fetch_unit_data().
@@ -1045,7 +1051,7 @@ def _summarise_ground_forces(gf_counts: dict[str, int]) -> list[str]:
 
 
 def _summarise_transportable_units(unit_counts: dict[str, int]) -> list[str]:
-    """Return human-readable labels for transportable units (fighters, mechs, infantry)."""
+    """Return transportable-unit labels in fighter → mech → infantry order."""
     parts: list[str] = []
     for eid in ("ff", "mf", "gf"):
         cnt = unit_counts.get(eid, 0)
@@ -1073,7 +1079,8 @@ def _compute_starting_transport_payload(
 
     used_capacity = sum(payload.values())
     remaining_capacity = max(0, capacity - used_capacity)
-    if remaining_capacity <= 0:
+    # All capacity is already consumed by onboard transportable units.
+    if remaining_capacity == 0:
         return payload
 
     planet_gf = _ground_forces_on_planets(tile_data, faction)
@@ -1527,19 +1534,20 @@ def _get_tactical_reach(
                 pickup_systems: dict[str, list[str]] = {}
                 for mid_pos, mid_gf in intermediate_gf.items():
                     if pickup_capacity_remaining <= 0:
-                        break
+                        continue
                     mid_path_cost = reach_info.get(mid_pos, {}).get("path_cost", path_cost)
                     if mid_path_cost < path_cost:
+                        remaining_for_mid = pickup_capacity_remaining
                         pickup_counts: dict[str, int] = {}
                         for eid in ("mf", "gf"):
-                            if pickup_capacity_remaining <= 0:
+                            if remaining_for_mid <= 0:
                                 break
                             available = mid_gf.get(eid, 0)
                             if available <= 0:
                                 continue
-                            take = min(available, pickup_capacity_remaining)
+                            take = min(available, remaining_for_mid)
                             pickup_counts[eid] = take
-                            pickup_capacity_remaining -= take
+                            remaining_for_mid -= take
                         labels = _summarise_ground_forces(pickup_counts)
                         if labels:
                             pickup_systems[mid_pos] = labels

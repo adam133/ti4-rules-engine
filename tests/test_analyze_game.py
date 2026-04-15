@@ -790,6 +790,21 @@ class TestTacticalReachByDestination:
         gf = all_arrivals[0]["ground_forces"]
         assert any("infantry" in g for g in gf)
 
+    def test_transported_units_include_fighters_without_ground_forces(self) -> None:
+        tile_unit_data = _make_full_map()
+        tile_unit_data["000"]["space"] = {
+            "myfaction": [
+                {"entityId": "cv", "entityType": "unit", "count": 1},
+                {"entityId": "ff", "entityType": "unit", "count": 2},
+            ]
+        }
+        state = self._make_state(tile_unit_data)
+        by_dest = _get_tactical_reach("p1", state)["by_destination"]
+        all_arrivals = [a for d in by_dest.values() for a in d["arrivals"]]
+        assert all_arrivals
+        assert any("fighter x2" in a["transported_units"] for a in all_arrivals)
+        assert all("ground_forces" in a and a["ground_forces"] == [] for a in all_arrivals)
+
     def test_ground_forces_from_planet_entities(self) -> None:
         """Infantry on planets in the starting tile are reported in ground_forces."""
         tile_unit_data = _make_full_map()
@@ -969,6 +984,8 @@ class TestTacticalReachByDestination:
         tile_positions = {
             pos: "1" for pos in tile_unit_data
         }
+        # Mirror the reported game layout where these specific rotated hyperlane
+        # tiles sit between 205 and the 203/207 branch systems.
         tile_positions.update({
             "204": "87a240",
             "206": "88a",
@@ -1010,10 +1027,7 @@ class TestTacticalReachByDestination:
         assert destroyer_arrivals[0]["ground_forces"] == []
         assert destroyer_arrivals[0]["transported_units"] == []
 
-        carrier_arrivals = [
-            a for a in arrivals_to_205
-            if "carrier x2" in a["ships"] and "destroyer" in a["ships"]
-        ]
+        carrier_arrivals = [a for a in arrivals_to_205 if a["capacity"] == 8]
         assert carrier_arrivals
         assert any("fighter x2" in a["transported_units"] for a in carrier_arrivals)
 
