@@ -440,6 +440,41 @@ def from_asyncti4(data: dict[str, Any] | AsyncTI4GameData) -> GameState:
 
     turn_order = TurnOrder(speaker_id=speaker_id, order=player_ids)
 
+    # Extract full objective display data (name, description, points) from the
+    # web-data API objectives block.  The API uses "pointValue" instead of
+    # "points" and includes "name" and optionally "description" for each entry.
+    # This data is stored in extra["objective_data"] so that analyze_game.py can
+    # show proper names and descriptions for objectives that are not in the
+    # bundled objectives.json (e.g. expansion objectives, custom objectives).
+    api_objective_data: dict[str, dict[str, Any]] = {}
+    if data.objectives:
+        for sublist_key in ("stage1Objectives", "stage2Objectives", "customObjectives"):
+            obj_type = {
+                "stage1Objectives": "stage_1",
+                "stage2Objectives": "stage_2",
+            }.get(sublist_key, "custom")
+            for obj in data.objectives.get(sublist_key, []):
+                if not isinstance(obj, dict):
+                    continue
+                key = obj.get("key")
+                if not key:
+                    continue
+                if key not in api_objective_data:
+                    entry: dict[str, Any] = {"id": key, "type": obj_type}
+                    if "name" in obj:
+                        entry["name"] = obj["name"]
+                    # The API uses "pointValue"; normalise to "points"
+                    pts = obj.get("pointValue") or obj.get("points")
+                    if pts is not None:
+                        entry["points"] = pts
+                    else:
+                        # Fallback: Stage I objectives are 1 VP, Stage II are 2 VP
+                        # per the base game rules.
+                        entry["points"] = 2 if obj_type == "stage_2" else 1
+                    if "description" in obj:
+                        entry["description"] = obj["description"]
+                    api_objective_data[key] = entry
+
     return GameState(
         game_id=data.gameName,
         round_number=data.gameRound,
@@ -459,5 +494,6 @@ def from_asyncti4(data: dict[str, Any] | AsyncTI4GameData) -> GameState:
                 if ":" in entry
                 for pos, tile_id in [entry.split(":", 1)]
             },
+            "objective_data": api_objective_data,
         },
     )

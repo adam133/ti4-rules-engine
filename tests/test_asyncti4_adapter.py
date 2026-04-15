@@ -661,3 +661,40 @@ class TestWebDataObjectivesFormat:
         parsed = AsyncTI4GameData.model_validate(data)
         assert parsed.publicObjectives == []
 
+
+
+# ---------------------------------------------------------------------------
+# objective_data in state.extra
+# ---------------------------------------------------------------------------
+
+
+class TestObjectiveDataInExtra:
+    """Full objective display data (name, points) should be stored in extra."""
+
+    def test_objective_data_stored_in_extra(self) -> None:
+        state = from_asyncti4(SAMPLE_WEB_DATA)
+        assert "objective_data" in state.extra
+
+    def test_objective_data_contains_names(self) -> None:
+        state = from_asyncti4(SAMPLE_WEB_DATA)
+        obj_data = state.extra["objective_data"]
+        # research_outposts is a stage1 objective with name "Found Research Outposts"
+        assert "research_outposts" in obj_data
+        assert obj_data["research_outposts"]["name"] == "Found Research Outposts"
+
+    def test_objective_data_normalises_point_value(self) -> None:
+        """API field 'pointValue' should be normalised to 'points' in extra data."""
+        state = from_asyncti4(SAMPLE_WEB_DATA)
+        obj_data = state.extra["objective_data"]
+        assert obj_data["research_outposts"]["points"] == 1
+        assert obj_data["subdue"]["points"] == 2
+
+    def test_objective_data_includes_type(self) -> None:
+        state = from_asyncti4(SAMPLE_WEB_DATA)
+        obj_data = state.extra["objective_data"]
+        assert obj_data["research_outposts"]["type"] == "stage_1"
+        assert obj_data["subdue"]["type"] == "stage_2"
+
+    def test_objective_data_empty_when_no_objectives_block(self) -> None:
+        state = from_asyncti4(SAMPLE_DATA)  # no objectives block
+        assert state.extra.get("objective_data") == {}
