@@ -744,7 +744,8 @@ class TestTacticalReachByDestination:
         }
         state = self._make_state(tile_unit_data, researched_technologies=["ff2"])
         by_dest = _get_tactical_reach("p1", state)["by_destination"]
-        assert "201" in by_dest  # two hops away from 000
+        # In the ring map built by _make_full_map(), 000 -> 101 -> 201 is two hops.
+        assert "201" in by_dest
 
     def test_space_dock_fighter_capacity_blocks_fighter_ii_excess(self) -> None:
         from ti4_rules_engine.scripts.analyze_game import _fighter_excess_count_for_movement

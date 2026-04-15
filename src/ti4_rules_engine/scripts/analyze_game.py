@@ -1405,7 +1405,10 @@ def _get_planet_ri(
 
 
 def _tile_position_sort_key(pos: str) -> tuple[int, int, str]:
-    """Sort numeric map positions first by integer value, then special positions alphabetically."""
+    """Sort numeric map positions first by integer value.
+
+    Non-numeric position strings are sorted alphabetically after numeric ones.
+    """
     try:
         pos_int = int(pos)
         return (0, pos_int, "")
