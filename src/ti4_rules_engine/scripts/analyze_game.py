@@ -25,13 +25,13 @@ from collections import deque
 from typing import TYPE_CHECKING, Any
 from urllib.error import URLError
 
-from adapters.asyncti4 import from_asyncti4
-from engine.combat import CombatGroup, CombatResult, CombatUnit, simulate_combat
-from engine.options import get_player_options
-from models.unit import Unit, UnitType
+from ti4_rules_engine.adapters.asyncti4 import from_asyncti4
+from ti4_rules_engine.engine.combat import CombatGroup, CombatResult, CombatUnit, simulate_combat
+from ti4_rules_engine.engine.options import get_player_options
+from ti4_rules_engine.models.unit import Unit, UnitType
 
 if TYPE_CHECKING:
-    from models.state import GameState
+    from ti4_rules_engine.models.state import GameState
 
 WEB_DATA_URL_TEMPLATE = (
     "https://bot.asyncti4.com/api/public/game/{game}/web-data"
@@ -1193,7 +1193,7 @@ def _format_leader(leader: dict[str, Any]) -> str:
 
 def print_player_summary(state: GameState, player_options_map: dict) -> None:
     """Print per-player details and available actions."""
-    from engine.options import PlayerAction
+    from ti4_rules_engine.engine.options import PlayerAction
 
     tech_names = fetch_tech_names()
     action_techs = fetch_action_tech_names()

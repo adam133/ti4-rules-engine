@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from models.state import GameState, PlayerState, TurnOrder
-from scripts.analyze_game import (
+from ti4_rules_engine.models.state import GameState, PlayerState, TurnOrder
+from ti4_rules_engine.scripts.analyze_game import (
     _build_movement_context,
     _get_planet_ri,
     _get_reach_info,
@@ -656,7 +656,7 @@ class TestTacticalReachByDestination:
         player_id: str = "p1",
         active_player_id: str | None = None,
     ):
-        from models.state import GameState, PlayerState, TurnOrder
+        from ti4_rules_engine.models.state import GameState, PlayerState, TurnOrder
         return GameState(
             game_id="test",
             turn_order=TurnOrder(speaker_id=player_id, order=[player_id]),
@@ -906,22 +906,22 @@ class TestTacticalReachByDestination:
 
 class TestFleetCapacity:
     def test_carrier_capacity_four(self) -> None:
-        from scripts.analyze_game import _fleet_capacity
+        from ti4_rules_engine.scripts.analyze_game import _fleet_capacity
         units = [{"entityId": "cv", "entityType": "unit", "count": 1}]
         assert _fleet_capacity(units) == 4
 
     def test_two_carriers_capacity_eight(self) -> None:
-        from scripts.analyze_game import _fleet_capacity
+        from ti4_rules_engine.scripts.analyze_game import _fleet_capacity
         units = [{"entityId": "cv", "entityType": "unit", "count": 2}]
         assert _fleet_capacity(units) == 8
 
     def test_destroyer_capacity_zero(self) -> None:
-        from scripts.analyze_game import _fleet_capacity
+        from ti4_rules_engine.scripts.analyze_game import _fleet_capacity
         units = [{"entityId": "dd", "entityType": "unit", "count": 3}]
         assert _fleet_capacity(units) == 0
 
     def test_mixed_fleet(self) -> None:
-        from scripts.analyze_game import _fleet_capacity
+        from ti4_rules_engine.scripts.analyze_game import _fleet_capacity
         units = [
             {"entityId": "cv", "entityType": "unit", "count": 2},  # 8
             {"entityId": "dn", "entityType": "unit", "count": 1},  # 1
@@ -930,13 +930,13 @@ class TestFleetCapacity:
         assert _fleet_capacity(units) == 9
 
     def test_empty_fleet(self) -> None:
-        from scripts.analyze_game import _fleet_capacity
+        from ti4_rules_engine.scripts.analyze_game import _fleet_capacity
         assert _fleet_capacity([]) == 0
 
 
 class TestGroundForcesOnPlanets:
     def test_infantry_on_planet(self) -> None:
-        from scripts.analyze_game import _ground_forces_on_planets
+        from ti4_rules_engine.scripts.analyze_game import _ground_forces_on_planets
         tile_data = {
             "planets": {
                 "p1": {
@@ -954,7 +954,7 @@ class TestGroundForcesOnPlanets:
         assert result == {"gf": 2}
 
     def test_mech_on_planet(self) -> None:
-        from scripts.analyze_game import _ground_forces_on_planets
+        from ti4_rules_engine.scripts.analyze_game import _ground_forces_on_planets
         tile_data = {
             "planets": {
                 "p1": {
@@ -972,7 +972,7 @@ class TestGroundForcesOnPlanets:
         assert result == {"mf": 1}
 
     def test_other_faction_not_counted(self) -> None:
-        from scripts.analyze_game import _ground_forces_on_planets
+        from ti4_rules_engine.scripts.analyze_game import _ground_forces_on_planets
         tile_data = {
             "planets": {
                 "p1": {
@@ -989,37 +989,37 @@ class TestGroundForcesOnPlanets:
         assert result == {"gf": 2}
 
     def test_no_planets_returns_empty(self) -> None:
-        from scripts.analyze_game import _ground_forces_on_planets
+        from ti4_rules_engine.scripts.analyze_game import _ground_forces_on_planets
         assert _ground_forces_on_planets({}, "red") == {}
 
 
 class TestSummariseGroundForces:
     def test_infantry_only(self) -> None:
-        from scripts.analyze_game import _summarise_ground_forces
+        from ti4_rules_engine.scripts.analyze_game import _summarise_ground_forces
         assert _summarise_ground_forces({"gf": 3}) == ["infantry x3"]
 
     def test_single_infantry(self) -> None:
-        from scripts.analyze_game import _summarise_ground_forces
+        from ti4_rules_engine.scripts.analyze_game import _summarise_ground_forces
         assert _summarise_ground_forces({"gf": 1}) == ["infantry"]
 
     def test_mech_only(self) -> None:
-        from scripts.analyze_game import _summarise_ground_forces
+        from ti4_rules_engine.scripts.analyze_game import _summarise_ground_forces
         assert _summarise_ground_forces({"mf": 2}) == ["mech x2"]
 
     def test_mechs_before_infantry(self) -> None:
-        from scripts.analyze_game import _summarise_ground_forces
+        from ti4_rules_engine.scripts.analyze_game import _summarise_ground_forces
         result = _summarise_ground_forces({"gf": 4, "mf": 1})
         assert result[0].startswith("mech")  # mechs listed first
         assert result[1].startswith("infantry")
 
     def test_empty_returns_empty(self) -> None:
-        from scripts.analyze_game import _summarise_ground_forces
+        from ti4_rules_engine.scripts.analyze_game import _summarise_ground_forces
         assert _summarise_ground_forces({}) == []
 
 
 class TestBuildCombatGroup:
     def test_single_ship(self) -> None:
-        from scripts.analyze_game import _build_combat_group
+        from ti4_rules_engine.scripts.analyze_game import _build_combat_group
         units = [{"entityId": "dd", "entityType": "unit", "count": 2}]
         group = _build_combat_group(units)
         assert len(group.units) == 1
@@ -1027,7 +1027,7 @@ class TestBuildCombatGroup:
         assert group.units[0].unit.id == "destroyer"
 
     def test_non_combat_entity_excluded(self) -> None:
-        from scripts.analyze_game import _build_combat_group
+        from ti4_rules_engine.scripts.analyze_game import _build_combat_group
         units = [
             {"entityId": "sd", "entityType": "unit", "count": 1},  # space dock – no combat
         ]
@@ -1035,7 +1035,7 @@ class TestBuildCombatGroup:
         assert len(group.units) == 0
 
     def test_mixed_fleet(self) -> None:
-        from scripts.analyze_game import _build_combat_group
+        from ti4_rules_engine.scripts.analyze_game import _build_combat_group
         units = [
             {"entityId": "cv", "entityType": "unit", "count": 1},
             {"entityId": "dd", "entityType": "unit", "count": 2},
@@ -1047,8 +1047,8 @@ class TestBuildCombatGroup:
 
 class TestFormatCombatResult:
     def test_output_contains_win_lose_draw(self) -> None:
-        from engine.combat import CombatResult
-        from scripts.analyze_game import _format_combat_result
+        from ti4_rules_engine.engine.combat import CombatResult
+        from ti4_rules_engine.scripts.analyze_game import _format_combat_result
         result = CombatResult(
             attacker_win_probability=0.7,
             defender_win_probability=0.2,
@@ -1063,8 +1063,8 @@ class TestFormatCombatResult:
         assert "2.5" in summary
 
     def test_survivors_shown_when_significant(self) -> None:
-        from engine.combat import CombatResult
-        from scripts.analyze_game import _format_combat_result
+        from ti4_rules_engine.engine.combat import CombatResult
+        from ti4_rules_engine.scripts.analyze_game import _format_combat_result
         result = CombatResult(
             attacker_win_probability=0.9,
             defender_win_probability=0.05,
@@ -1080,12 +1080,12 @@ class TestFormatCombatResult:
 
 class TestObjectiveData:
     def test_fetch_objective_data_returns_dict(self) -> None:
-        from scripts.analyze_game import fetch_objective_data
+        from ti4_rules_engine.scripts.analyze_game import fetch_objective_data
         data = fetch_objective_data()
         assert isinstance(data, dict)
 
     def test_expand_borders_in_data(self) -> None:
-        from scripts.analyze_game import fetch_objective_data
+        from ti4_rules_engine.scripts.analyze_game import fetch_objective_data
         data = fetch_objective_data()
         assert "expand_borders" in data
         assert data["expand_borders"]["name"] == "Expand Borders"
@@ -1093,14 +1093,14 @@ class TestObjectiveData:
         assert data["expand_borders"]["points"] == 1
 
     def test_command_an_armada_stage_2(self) -> None:
-        from scripts.analyze_game import fetch_objective_data
+        from ti4_rules_engine.scripts.analyze_game import fetch_objective_data
         data = fetch_objective_data()
         assert "command_an_armada" in data
         assert data["command_an_armada"]["type"] == "stage_2"
         assert data["command_an_armada"]["points"] == 2
 
     def test_format_objective_known_id(self) -> None:
-        from scripts.analyze_game import _format_objective, fetch_objective_data
+        from ti4_rules_engine.scripts.analyze_game import _format_objective, fetch_objective_data
         data = fetch_objective_data()
         result = _format_objective("expand_borders", data)
         assert "Expand Borders" in result
@@ -1108,7 +1108,7 @@ class TestObjectiveData:
         assert "6 planets" in result
 
     def test_format_objective_unknown_id(self) -> None:
-        from scripts.analyze_game import _format_objective
+        from ti4_rules_engine.scripts.analyze_game import _format_objective
         result = _format_objective("some_unknown_objective", {})
         assert result == "some_unknown_objective"
 
@@ -1120,19 +1120,19 @@ class TestObjectiveData:
 
 class TestLeaderHelpers:
     def test_leader_type_from_explicit_field(self) -> None:
-        from scripts.analyze_game import _get_leader_type
+        from ti4_rules_engine.scripts.analyze_game import _get_leader_type
         assert _get_leader_type({"id": "x", "type": "agent"}) == "agent"
         assert _get_leader_type({"id": "x", "type": "commander"}) == "commander"
         assert _get_leader_type({"id": "x", "type": "hero"}) == "hero"
 
     def test_leader_type_inferred_from_id_suffix(self) -> None:
-        from scripts.analyze_game import _get_leader_type
+        from ti4_rules_engine.scripts.analyze_game import _get_leader_type
         assert _get_leader_type({"id": "jolnar_agent"}) == "agent"
         assert _get_leader_type({"id": "jolnar_commander"}) == "commander"
         assert _get_leader_type({"id": "jolnar_hero"}) == "hero"
 
     def test_leader_type_unknown(self) -> None:
-        from scripts.analyze_game import _get_leader_type
+        from ti4_rules_engine.scripts.analyze_game import _get_leader_type
         assert _get_leader_type({"id": "jolnar_x"}) == "leader"
 
 
@@ -1174,18 +1174,18 @@ class TestAsyncTI4AdapterNewFields:
     }
 
     def test_public_objectives_in_state(self) -> None:
-        from adapters.asyncti4 import from_asyncti4
+        from ti4_rules_engine.adapters.asyncti4 import from_asyncti4
         state = from_asyncti4(self._BASE_DATA)
         assert "expand_borders" in state.public_objectives
         assert "diversify_research" in state.public_objectives
 
     def test_scored_public_objectives_merged_into_scored(self) -> None:
-        from adapters.asyncti4 import from_asyncti4
+        from ti4_rules_engine.adapters.asyncti4 import from_asyncti4
         state = from_asyncti4(self._BASE_DATA)
         assert "expand_borders" in state.players["alice"].scored_objectives
 
     def test_leaders_stored_in_extra(self) -> None:
-        from adapters.asyncti4 import from_asyncti4
+        from ti4_rules_engine.adapters.asyncti4 import from_asyncti4
         state = from_asyncti4(self._BASE_DATA)
         player_leaders = state.extra.get("player_leaders", {})
         assert "alice" in player_leaders
@@ -1195,7 +1195,7 @@ class TestAsyncTI4AdapterNewFields:
         assert "jolnar_agent" in leader_ids
 
     def test_no_leaders_no_entry_in_extra(self) -> None:
-        from adapters.asyncti4 import from_asyncti4
+        from ti4_rules_engine.adapters.asyncti4 import from_asyncti4
         data = dict(self._BASE_DATA)
         player = dict(data["playerData"][0])
         player["leaders"] = []
@@ -1213,29 +1213,29 @@ class TestAsyncTI4AdapterNewFields:
 
 class TestFetchLeaderData:
     def test_returns_dict(self) -> None:
-        from scripts.analyze_game import fetch_leader_data
+        from ti4_rules_engine.scripts.analyze_game import fetch_leader_data
         data = fetch_leader_data()
         assert isinstance(data, dict)
 
     def test_naaz_agent_present(self) -> None:
-        from scripts.analyze_game import fetch_leader_data
+        from ti4_rules_engine.scripts.analyze_game import fetch_leader_data
         data = fetch_leader_data()
         assert "naazagent" in data
 
     def test_naaz_agent_not_action_timing(self) -> None:
-        from scripts.analyze_game import fetch_leader_data
+        from ti4_rules_engine.scripts.analyze_game import fetch_leader_data
         data = fetch_leader_data()
         naaz = data["naazagent"]
         assert not naaz.get("abilityWindow", "").startswith("ACTION:")
 
     def test_arborec_agent_is_action_timing(self) -> None:
-        from scripts.analyze_game import fetch_leader_data
+        from ti4_rules_engine.scripts.analyze_game import fetch_leader_data
         data = fetch_leader_data()
         arborec = data["arborecagent"]
         assert arborec.get("abilityWindow", "").startswith("ACTION:")
 
     def test_leader_type_field_present(self) -> None:
-        from scripts.analyze_game import fetch_leader_data
+        from ti4_rules_engine.scripts.analyze_game import fetch_leader_data
         data = fetch_leader_data()
         for lid, rec in data.items():
             assert "type" in rec, f"Leader {lid!r} missing 'type' field"
@@ -1248,37 +1248,37 @@ class TestFetchLeaderData:
 
 class TestCombatUnitStats:
     def test_carrier_move_is_one(self) -> None:
-        from scripts.analyze_game import _COMBAT_UNITS
+        from ti4_rules_engine.scripts.analyze_game import _COMBAT_UNITS
         assert _COMBAT_UNITS["cv"].move == 1
 
     def test_dreadnought_combat_rolls_is_one(self) -> None:
-        from scripts.analyze_game import _COMBAT_UNITS
+        from ti4_rules_engine.scripts.analyze_game import _COMBAT_UNITS
         assert _COMBAT_UNITS["dn"].combat_rolls == 1
 
     def test_war_sun_move_is_two(self) -> None:
-        from scripts.analyze_game import _COMBAT_UNITS
+        from ti4_rules_engine.scripts.analyze_game import _COMBAT_UNITS
         assert _COMBAT_UNITS["ws"].move == 2
 
     def test_flagship_capacity_is_three(self) -> None:
-        from scripts.analyze_game import _COMBAT_UNITS
+        from ti4_rules_engine.scripts.analyze_game import _COMBAT_UNITS
         assert _COMBAT_UNITS["fs"].capacity == 3
 
     def test_flagship_combat_is_seven(self) -> None:
-        from scripts.analyze_game import _COMBAT_UNITS
+        from ti4_rules_engine.scripts.analyze_game import _COMBAT_UNITS
         assert _COMBAT_UNITS["fs"].combat == 7
 
     def test_fighter_cost_is_half(self) -> None:
-        from scripts.analyze_game import _COMBAT_UNITS
+        from ti4_rules_engine.scripts.analyze_game import _COMBAT_UNITS
         assert _COMBAT_UNITS["ff"].cost == 0.5
 
     def test_war_sun_move_loaded_from_data_file(self) -> None:
         """War Sun base move is 2 (per asyncti4 baseUnits.json), not 3."""
-        from scripts.analyze_game import _SHIP_MOVE
+        from ti4_rules_engine.scripts.analyze_game import _SHIP_MOVE
         assert _SHIP_MOVE.get("ws") == 2
 
     def test_titans_cruiser_has_capacity(self) -> None:
         """Titans' Saturn Engine I has capacity=1 (faction-specific override)."""
-        from scripts.analyze_game import fetch_unit_data
+        from ti4_rules_engine.scripts.analyze_game import fetch_unit_data
         titans = fetch_unit_data("titans")
         cruiser = titans.get("ca")
         assert cruiser is not None
@@ -1287,12 +1287,12 @@ class TestCombatUnitStats:
 
     def test_base_cruiser_has_no_capacity(self) -> None:
         """Base game cruiser has capacity=0."""
-        from scripts.analyze_game import _COMBAT_UNITS
+        from ti4_rules_engine.scripts.analyze_game import _COMBAT_UNITS
         assert _COMBAT_UNITS["ca"].capacity == 0
 
     def test_unit_data_loaded_from_files(self) -> None:
         """_COMBAT_UNITS should be populated from data files, not empty."""
-        from scripts.analyze_game import _COMBAT_UNITS
+        from ti4_rules_engine.scripts.analyze_game import _COMBAT_UNITS
         assert len(_COMBAT_UNITS) >= 8  # at least the standard ship types
         assert "cv" in _COMBAT_UNITS
         assert "ws" in _COMBAT_UNITS

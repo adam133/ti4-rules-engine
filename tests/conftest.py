@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import pytest
 
-from models.card import ActionCard, ActionCardType, StrategyCard
-from models.faction import Faction, FactionAbility
-from models.planet import Planet, PlanetTrait, TechSkip
-from models.state import GamePhase, GameState, PlayerState, TurnOrder
-from models.technology import TechCategory, Technology
-from models.unit import Unit, UnitType
+from ti4_rules_engine.models.card import ActionCard, ActionCardType, StrategyCard
+from ti4_rules_engine.models.faction import Faction, FactionAbility
+from ti4_rules_engine.models.planet import Planet, PlanetTrait, TechSkip
+from ti4_rules_engine.models.state import GamePhase, GameState, PlayerState, TurnOrder
+from ti4_rules_engine.models.technology import TechCategory, Technology
+from ti4_rules_engine.models.unit import Unit, UnitType
 
 
 @pytest.fixture()

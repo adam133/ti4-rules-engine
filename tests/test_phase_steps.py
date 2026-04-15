@@ -5,9 +5,9 @@ from __future__ import annotations
 import pytest
 from transitions import MachineError
 
-from engine.options import PlayerAction, get_player_options
-from engine.round_engine import RoundEngine
-from models.state import (
+from ti4_rules_engine.engine.options import PlayerAction, get_player_options
+from ti4_rules_engine.engine.round_engine import RoundEngine
+from ti4_rules_engine.models.state import (
     AGENDA_PHASE_STEPS,
     STATUS_PHASE_STEPS,
     AgendaPhaseStep,

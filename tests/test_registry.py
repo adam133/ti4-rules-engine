@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import pytest
 
-from models.card import ActionCard, ActionCardType, StrategyCard
-from models.planet import Planet
-from models.technology import TechCategory, Technology
-from models.unit import Unit, UnitType
-from registry.component_registry import ComponentRegistry
-from registry.effect_registry import Effect, EffectRegistry, TriggerType
+from ti4_rules_engine.models.card import ActionCard, ActionCardType, StrategyCard
+from ti4_rules_engine.models.planet import Planet
+from ti4_rules_engine.models.technology import TechCategory, Technology
+from ti4_rules_engine.models.unit import Unit, UnitType
+from ti4_rules_engine.registry.component_registry import ComponentRegistry
+from ti4_rules_engine.registry.effect_registry import Effect, EffectRegistry, TriggerType
 
 
 # ---------------------------------------------------------------------------

@@ -21,8 +21,8 @@ TI4 space combat summary (per the Living Rules Reference):
 
 Example usage::
 
-    from engine.combat import CombatGroup, CombatUnit, simulate_combat
-    from models.unit import Unit, UnitType
+    from ti4_rules_engine.engine.combat import CombatGroup, CombatUnit, simulate_combat
+    from ti4_rules_engine.models.unit import Unit, UnitType
 
     carrier = Unit(id="carrier", name="Carrier", unit_type=UnitType.CARRIER,
                    cost=3, combat=9, move=2, capacity=4)
@@ -42,7 +42,7 @@ import random
 from dataclasses import dataclass, field
 from typing import NamedTuple
 
-from models.unit import Unit
+from ti4_rules_engine.models.unit import Unit
 
 
 @dataclass

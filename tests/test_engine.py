@@ -5,8 +5,8 @@ from __future__ import annotations
 import pytest
 from transitions import MachineError
 
-from engine.round_engine import RoundEngine
-from models.state import GamePhase, GameState
+from ti4_rules_engine.engine.round_engine import RoundEngine
+from ti4_rules_engine.models.state import GamePhase, GameState
 
 
 class TestRoundEnginePhaseTransitions:

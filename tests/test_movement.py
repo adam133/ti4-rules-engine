@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import pytest
 
-from engine.movement import get_fleet_move, get_reachable_systems
-from models.map import AnomalyType, GalaxyMap, System, WormholeType
-from models.unit import Unit, UnitType
+from ti4_rules_engine.engine.movement import get_fleet_move, get_reachable_systems
+from ti4_rules_engine.models.map import AnomalyType, GalaxyMap, System, WormholeType
+from ti4_rules_engine.models.unit import Unit, UnitType
 
 # ---------------------------------------------------------------------------
 # Fixtures

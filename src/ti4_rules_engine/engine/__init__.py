@@ -6,10 +6,10 @@ undo/redo manager, the ``get_player_options`` player-options query,
 movement range evaluation, and Monte Carlo combat simulation.
 """
 
-from engine.combat import CombatGroup, CombatResult, CombatUnit, simulate_combat
-from engine.history import GameHistory
-from engine.movement import get_fleet_move, get_reachable_systems
-from engine.options import (
+from ti4_rules_engine.engine.combat import CombatGroup, CombatResult, CombatUnit, simulate_combat
+from ti4_rules_engine.engine.history import GameHistory
+from ti4_rules_engine.engine.movement import get_fleet_move, get_reachable_systems
+from ti4_rules_engine.engine.options import (
     PlayerAction,
     PlayerOptions,
     PublicPlayerInfo,
@@ -17,8 +17,8 @@ from engine.options import (
     get_player_options,
     get_public_player_info,
 )
-from engine.round_engine import RoundEngine
-from engine.scoring import can_score_objective, score_points_available
+from ti4_rules_engine.engine.round_engine import RoundEngine
+from ti4_rules_engine.engine.scoring import can_score_objective, score_points_available
 
 __all__ = [
     "CombatGroup",

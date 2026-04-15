@@ -37,7 +37,7 @@ AsyncTI4 JSON structure notes
 Example::
 
     import json
-    from adapters.asyncti4 import from_asyncti4
+    from ti4_rules_engine.adapters.asyncti4 import from_asyncti4
 
     with open("pbd22295.json") as fh:
         raw = json.load(fh)
@@ -52,7 +52,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from models.state import GamePhase, GameState, PlayerState, TurnOrder
+from ti4_rules_engine.models.state import GamePhase, GameState, PlayerState, TurnOrder
 
 # ---------------------------------------------------------------------------
 # Phase mapping

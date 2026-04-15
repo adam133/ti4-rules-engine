@@ -11,6 +11,6 @@ Currently supported formats
   See :mod:`adapters.asyncti4` for details.
 """
 
-from adapters.asyncti4 import AsyncTI4GameData, from_asyncti4
+from ti4_rules_engine.adapters.asyncti4 import AsyncTI4GameData, from_asyncti4
 
 __all__ = ["AsyncTI4GameData", "from_asyncti4"]

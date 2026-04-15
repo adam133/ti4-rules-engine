@@ -18,12 +18,12 @@ from typing import Any
 
 import structlog
 
-from models.card import ActionCard, StrategyCard
-from models.faction import Faction
-from models.objective import Objective
-from models.planet import Planet
-from models.technology import Technology
-from models.unit import Unit
+from ti4_rules_engine.models.card import ActionCard, StrategyCard
+from ti4_rules_engine.models.faction import Faction
+from ti4_rules_engine.models.objective import Objective
+from ti4_rules_engine.models.planet import Planet
+from ti4_rules_engine.models.technology import Technology
+from ti4_rules_engine.models.unit import Unit
 
 logger = structlog.get_logger(__name__)
 

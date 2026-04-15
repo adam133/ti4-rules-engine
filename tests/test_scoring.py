@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import pytest
 
-from engine.scoring import can_score_objective, score_points_available
-from models.objective import Objective, ObjectiveType, ScoringCondition, ScoringConditionType
-from models.planet import Planet, PlanetTrait, TechSkip
-from models.state import GamePhase, GameState, PlayerState, TurnOrder
-from models.technology import TechCategory, Technology
+from ti4_rules_engine.engine.scoring import can_score_objective, score_points_available
+from ti4_rules_engine.models.objective import Objective, ObjectiveType, ScoringCondition, ScoringConditionType
+from ti4_rules_engine.models.planet import Planet, PlanetTrait, TechSkip
+from ti4_rules_engine.models.state import GamePhase, GameState, PlayerState, TurnOrder
+from ti4_rules_engine.models.technology import TechCategory, Technology
 
 # ---------------------------------------------------------------------------
 # Helpers / fixtures
