@@ -1,0 +1,18 @@
+{
+    "id": "er07",
+    "name": "Khjan Shul",
+    "aliases": [
+        "khjan",
+        "khjanshul",
+        "shul"
+    ],
+    "imagePath": "er_07_async.png",
+    "shipPositionsType": "TYPE05",
+    "wormholes": [],
+    "planets": [
+        "khjan",
+        "shul"
+    ],
+    "tileBack": "blue",
+    "source": "eronous"
+}
