@@ -22,7 +22,7 @@ import pathlib
 import re
 import sys
 import urllib.request
-from collections import deque
+from collections import Counter, deque
 from typing import TYPE_CHECKING, Any
 from urllib.error import URLError
 
@@ -372,6 +372,34 @@ def fetch_tech_names() -> dict[str, str]:
     return _load_tech_names_cached()
 
 
+def _has_fighter_ii(researched_techs: list[str]) -> bool:
+    """Return ``True`` if the player's researched techs include any Fighter II upgrade."""
+    fighter_ii_aliases = _load_fighter_ii_aliases_cached()
+    return any(t in fighter_ii_aliases for t in (researched_techs or []))
+
+
+@functools.cache
+def _load_fighter_ii_aliases_cached() -> frozenset[str]:
+    """Return all technology aliases that represent Fighter II upgrades."""
+    try:
+        with _TECH_DATA_FILE.open(encoding="utf-8") as fh:
+            techs: list[dict[str, Any]] = json.load(fh)
+        aliases = {
+            t["alias"]
+            for t in techs
+            if isinstance(t, dict)
+            and "alias" in t
+            and (
+                t.get("alias") == _FIGHTER_II_TECH_ID
+                or t.get("baseUpgrade") == _FIGHTER_II_TECH_ID
+            )
+        }
+        aliases.add(_FIGHTER_II_TECH_ID)
+        return frozenset(aliases)
+    except (OSError, json.JSONDecodeError, KeyError, TypeError):
+        return frozenset({_FIGHTER_II_TECH_ID})
+
+
 @functools.cache
 def _load_tech_names_cached() -> dict[str, str]:
     """Cached implementation of :func:`fetch_tech_names`."""
@@ -649,6 +677,11 @@ _TRANSPORTED_UNITS = frozenset({"ff", "gf", "mf"})  # fighter, ground force, mec
 
 # Ground-force unit entity IDs (infantry and mechs live on planets).
 _GROUND_FORCE_IDS = frozenset({"gf", "mf"})
+_FIGHTER_ENTITY_ID = "ff"
+_SPACE_DOCK_ENTITY_ID = "sd"
+_FIGHTER_II_TECH_ID = "ff2"
+_DEFAULT_SPACE_DOCK_FIGHTER_CAPACITY = 3
+_FIGHTER_II_MOVE_SPEED = 2
 
 # Unit registries built from data/units/baseUnits.json.
 # These are populated at first use via fetch_unit_data().
@@ -667,6 +700,9 @@ _SHIP_CAPACITY: dict[str, int] = _build_ship_capacity_map(_COMBAT_UNITS)
 def _fleet_move_value(
     units: list[dict[str, Any]],
     ship_move: dict[str, int] | None = None,
+    *,
+    fighter_excess_count: int = 0,
+    fighter_independent_move: int = 0,
 ) -> int:
     """Return the minimum move value for a collection of space units.
 
@@ -685,6 +721,8 @@ def _fleet_move_value(
         and u.get("entityType") == "unit"
         and u.get("entityId") in move_map
     ]
+    if fighter_excess_count > 0 and fighter_independent_move > 0:
+        move_vals.append(fighter_independent_move)
     return min(move_vals) if move_vals else 0
 
 
@@ -730,6 +768,77 @@ def _fleet_capacity(
         cap = cap_map.get(eid, 0)
         total += cap * u.get("count", 1)
     return total
+
+
+def _count_units_by_entity_id(units: list[dict[str, Any]]) -> dict[str, int]:
+    """Return ``{entity_id: count}`` for unit entities in *units*."""
+    counts: dict[str, int] = {}
+    for u in units:
+        if not isinstance(u, dict) or u.get("entityType") != "unit":
+            continue
+        eid = u.get("entityId", "")
+        counts[eid] = counts.get(eid, 0) + u.get("count", 1)
+    return counts
+
+
+def _space_dock_fighter_capacity_in_tile(
+    tile_data: dict[str, Any],
+    faction: str,
+    ship_capacity: dict[str, int] | None = None,
+) -> int:
+    """Return fighter capacity in *tile_data* provided by the player's space docks."""
+    cap_map = ship_capacity if ship_capacity is not None else _SHIP_CAPACITY
+    sd_capacity_raw = cap_map.get(_SPACE_DOCK_ENTITY_ID, _DEFAULT_SPACE_DOCK_FIGHTER_CAPACITY)
+    sd_capacity = (
+        sd_capacity_raw
+        if isinstance(sd_capacity_raw, int) and sd_capacity_raw > 0
+        else _DEFAULT_SPACE_DOCK_FIGHTER_CAPACITY
+    )
+    total_sd_count = 0
+
+    # Space-area docks (rare but supported by the payload shape)
+    space = tile_data.get("space") or {}
+    if isinstance(space, dict):
+        total_sd_count += _count_units_by_entity_id(
+            space.get(faction) or []
+        ).get(_SPACE_DOCK_ENTITY_ID, 0)
+
+    # Planet-area docks
+    for pdata in (tile_data.get("planets") or {}).values():
+        if not isinstance(pdata, dict):
+            continue
+        entities = pdata.get("entities") or {}
+        if not isinstance(entities, dict):
+            continue
+        total_sd_count += _count_units_by_entity_id(entities.get(faction) or []).get(
+            _SPACE_DOCK_ENTITY_ID, 0
+        )
+
+    return total_sd_count * sd_capacity
+
+
+def _fighter_excess_count_for_movement(
+    fleet_units: list[dict[str, Any]],
+    tile_data: dict[str, Any],
+    faction: str,
+    ship_capacity: dict[str, int] | None = None,
+) -> int:
+    """Return number of fighters that must move independently (Fighter II excess)."""
+    cap_map = ship_capacity if ship_capacity is not None else _SHIP_CAPACITY
+    counts = _count_units_by_entity_id(fleet_units)
+    fighters = counts.get(_FIGHTER_ENTITY_ID, 0)
+    if fighters <= 0:
+        return 0
+
+    ship_capacity_total = _fleet_capacity(fleet_units, cap_map)
+    ground_forces_in_space = sum(counts.get(eid, 0) for eid in _GROUND_FORCE_IDS)
+    remaining_ship_capacity = max(0, ship_capacity_total - ground_forces_in_space)
+
+    # Space docks provide fighter-only capacity in the system.
+    dock_fighter_capacity = _space_dock_fighter_capacity_in_tile(tile_data, faction, cap_map)
+    fighters_requiring_ship_capacity = max(0, fighters - dock_fighter_capacity)
+
+    return max(0, fighters_requiring_ship_capacity - remaining_ship_capacity)
 
 
 def _ground_forces_in_space(units: list[dict[str, Any]]) -> dict[str, int]:
@@ -1089,6 +1198,7 @@ def _get_tactical_reach(
         )
 
     has_amd = "amd" in (player.researched_technologies or [])
+    has_fighter_ii = _has_fighter_ii(player.researched_technologies or [])
 
     # Load faction-specific unit data for movement / capacity / combat calcs.
     faction_units = fetch_unit_data(faction)
@@ -1107,7 +1217,19 @@ def _get_tactical_reach(
         if faction in tile_data.get("ccs", []):
             continue
         fleet_units: list[dict[str, Any]] = space[faction]
-        fleet_move = _fleet_move_value(fleet_units, faction_ship_move)
+        fighter_excess = (
+            _fighter_excess_count_for_movement(
+                fleet_units, tile_data, faction, faction_ship_capacity
+            )
+            if has_fighter_ii
+            else 0
+        )
+        fleet_move = _fleet_move_value(
+            fleet_units,
+            faction_ship_move,
+            fighter_excess_count=fighter_excess,
+            fighter_independent_move=_FIGHTER_II_MOVE_SPEED if has_fighter_ii else 0,
+        )
         if fleet_move <= 0:
             continue
 
@@ -1282,6 +1404,99 @@ def _get_planet_ri(
     return planet_ri
 
 
+def _tile_position_sort_key(pos: str) -> tuple[int, int, str]:
+    """Sort numeric map positions first by integer value.
+
+    Non-numeric position strings are sorted alphabetically after numeric ones.
+    """
+    try:
+        pos_int = int(pos)
+        return (0, pos_int, "")
+    except ValueError:
+        return (1, 0, pos)
+
+
+def _format_entity_display_name(entity_id: str, entity_type: str) -> str:
+    """Return a human-readable display name for a tile entity."""
+    if entity_type == "unit":
+        return _UNIT_NAMES.get(entity_id, entity_id)
+    return entity_id.replace("_", " ")
+
+
+def _summarise_entity_list(entities: list[dict[str, Any]]) -> list[str]:
+    """Return sorted ``"<name> x<count>"`` labels for units/tokens in *entities*."""
+    counts: Counter[str] = Counter()
+    for entry in entities:
+        if not isinstance(entry, dict):
+            continue
+        entity_type = str(entry.get("entityType", ""))
+        entity_id = str(entry.get("entityId", ""))
+        if not entity_id:
+            continue
+        raw_count = entry.get("count", 1)
+        count = raw_count if isinstance(raw_count, int) else 1
+        name = _format_entity_display_name(entity_id, entity_type)
+        counts[name] += count
+    return [
+        name if count == 1 else f"{name} x{count}"
+        for name, count in sorted(counts.items())
+    ]
+
+
+def _build_full_map_lines(state: GameState) -> list[str]:
+    """Return printable lines describing every tile and its current units/tokens."""
+    tile_unit_data: dict[str, Any] = state.extra.get("tile_unit_data", {})
+    tile_positions: dict[str, str] = state.extra.get("tile_positions", {})
+    if not tile_unit_data:
+        return []
+
+    lines: list[str] = []
+    for pos in sorted(tile_unit_data, key=_tile_position_sort_key):
+        tile_data = tile_unit_data.get(pos) or {}
+        tile_id = tile_positions.get(pos)
+        label = f"{pos} (tile {tile_id})" if tile_id else pos
+        lines.append(f"    {label}:")
+
+        details: list[str] = []
+        ccs = tile_data.get("ccs") or []
+        if ccs:
+            details.append(f"CCs: {', '.join(sorted(str(cc) for cc in ccs))}")
+
+        space = tile_data.get("space") or {}
+        if isinstance(space, dict):
+            for fac in sorted(space):
+                ents = space.get(fac)
+                if isinstance(ents, list):
+                    labels = _summarise_entity_list(ents)
+                    if labels:
+                        details.append(f"space/{fac}: {', '.join(labels)}")
+
+        planets = tile_data.get("planets") or {}
+        if isinstance(planets, dict):
+            for planet_id in sorted(planets):
+                pdata = planets.get(planet_id)
+                if not isinstance(pdata, dict):
+                    continue
+                entities = pdata.get("entities") or {}
+                if not isinstance(entities, dict):
+                    continue
+                for fac in sorted(entities):
+                    ents = entities.get(fac)
+                    if isinstance(ents, list):
+                        labels = _summarise_entity_list(ents)
+                        if labels:
+                            details.append(
+                                f"planet/{planet_id}/{fac}: {', '.join(labels)}"
+                            )
+
+        if details:
+            lines.extend([f"      - {d}" for d in details])
+        else:
+            lines.append("      - (no units/tokens)")
+
+    return lines
+
+
 # ---------------------------------------------------------------------------
 # Output helpers
 # ---------------------------------------------------------------------------
@@ -1333,6 +1548,13 @@ def print_game_summary(state: GameState) -> None:
                     print(f"      {desc}")
             else:
                 print(f"    {obj_id}")
+
+    full_map_lines = _build_full_map_lines(state)
+    if full_map_lines:
+        print()
+        print("  FULL MAP (tiles, units, tokens):")
+        for line in full_map_lines:
+            print(line)
 
     print("=" * 60)
 
