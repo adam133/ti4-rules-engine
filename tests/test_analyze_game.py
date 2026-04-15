@@ -191,7 +191,7 @@ class TestAnomalySubtypeRules:
     # --- Supernova ---
     def test_supernova_blocks_entry(self) -> None:
         tile_positions = self._tile_positions({"102": "43"})  # 43 = supernova
-        tile_type_map, wha = _build_movement_context(tile_positions)
+        tile_type_map, wha, _hla = _build_movement_context(tile_positions)
         result = get_reachable_systems(
             "101", 3, self._OPEN_MAP, "red",
             tile_type_map=tile_type_map, wormhole_adjacency=wha,
@@ -202,7 +202,7 @@ class TestAnomalySubtypeRules:
         # 101→102(supernova)→204 chain: 204 should still be reachable via other paths
         # but 102 itself and anything only reachable via 102 should be absent
         tile_positions = self._tile_positions({"102": "43"})
-        tile_type_map, wha = _build_movement_context(tile_positions)
+        tile_type_map, wha, _hla = _build_movement_context(tile_positions)
         result = get_reachable_systems(
             "101", 3, self._OPEN_MAP, "red",
             tile_type_map=tile_type_map, wormhole_adjacency=wha,
@@ -212,7 +212,7 @@ class TestAnomalySubtypeRules:
     # --- Asteroid field ---
     def test_asteroid_blocks_without_amd(self) -> None:
         tile_positions = self._tile_positions({"102": "44"})  # 44 = asteroid
-        tile_type_map, wha = _build_movement_context(tile_positions)
+        tile_type_map, wha, _hla = _build_movement_context(tile_positions)
         result = get_reachable_systems(
             "101", 3, self._OPEN_MAP, "red",
             tile_type_map=tile_type_map, wormhole_adjacency=wha,
@@ -222,7 +222,7 @@ class TestAnomalySubtypeRules:
 
     def test_asteroid_passable_with_amd(self) -> None:
         tile_positions = self._tile_positions({"102": "44"})
-        tile_type_map, wha = _build_movement_context(tile_positions)
+        tile_type_map, wha, _hla = _build_movement_context(tile_positions)
         result = get_reachable_systems(
             "101", 2, self._OPEN_MAP, "red",
             tile_type_map=tile_type_map, wormhole_adjacency=wha,
@@ -233,7 +233,7 @@ class TestAnomalySubtypeRules:
     # --- Nebula ---
     def test_nebula_can_be_entered(self) -> None:
         tile_positions = self._tile_positions({"102": "42"})  # 42 = nebula
-        tile_type_map, wha = _build_movement_context(tile_positions)
+        tile_type_map, wha, _hla = _build_movement_context(tile_positions)
         result = get_reachable_systems(
             "101", 2, self._OPEN_MAP, "red",
             tile_type_map=tile_type_map, wormhole_adjacency=wha,
@@ -243,7 +243,7 @@ class TestAnomalySubtypeRules:
     def test_nebula_cannot_be_moved_through(self) -> None:
         # With move 2: can reach 102(nebula), but nothing beyond it
         tile_positions = self._tile_positions({"102": "42"})
-        tile_type_map, wha = _build_movement_context(tile_positions)
+        tile_type_map, wha, _hla = _build_movement_context(tile_positions)
         result = get_reachable_systems(
             "101", 2, self._OPEN_MAP, "red",
             tile_type_map=tile_type_map, wormhole_adjacency=wha,
@@ -266,7 +266,7 @@ class TestAnomalySubtypeRules:
     def test_nebula_blocks_passthrough_with_enough_moves(self) -> None:
         # Position 000: move 3, nebula at 101
         tile_positions = self._tile_positions({"101": "42"})
-        tile_type_map, wha = _build_movement_context(tile_positions)
+        tile_type_map, wha, _hla = _build_movement_context(tile_positions)
         result = get_reachable_systems(
             "000", 3, self._OPEN_MAP, "red",
             tile_type_map=tile_type_map, wormhole_adjacency=wha,
@@ -286,7 +286,7 @@ class TestAnomalySubtypeRules:
         # But if 101 is a gravity rift, moving through it gives +1,
         # so we can reach ring 2 via 000→101(rift,remaining stays 1)→201 etc.
         tile_positions = self._tile_positions({"101": "41"})  # 41 = gravity rift
-        tile_type_map, wha = _build_movement_context(tile_positions)
+        tile_type_map, wha, _hla = _build_movement_context(tile_positions)
         result = get_reachable_systems(
             "000", 1, self._OPEN_MAP, "red",
             tile_type_map=tile_type_map, wormhole_adjacency=wha,
@@ -321,7 +321,7 @@ class TestWormholeAdjacency:
         tile_positions = {pos: "1" for pos in self._ALL_POSITIONS}
         tile_positions["101"] = "26"   # ALPHA wormhole
         tile_positions["201"] = "39"   # ALPHA wormhole
-        tile_type_map, wha = _build_movement_context(tile_positions)
+        tile_type_map, wha, _hla = _build_movement_context(tile_positions)
         assert "201" in wha.get("101", frozenset())
 
     def test_wormhole_adjacency_used_in_bfs(self) -> None:
@@ -329,7 +329,7 @@ class TestWormholeAdjacency:
         tile_positions = {pos: "1" for pos in self._ALL_POSITIONS}
         tile_positions["201"] = "26"   # ALPHA (starting pos)
         tile_positions["106"] = "39"   # ALPHA (destination via wormhole)
-        tile_type_map, wha = _build_movement_context(tile_positions)
+        tile_type_map, wha, _hla = _build_movement_context(tile_positions)
         result = get_reachable_systems(
             "201", 1, self._OPEN_MAP, "red",
             tile_type_map=tile_type_map, wormhole_adjacency=wha,
@@ -341,12 +341,12 @@ class TestWormholeAdjacency:
         tile_positions = {pos: "1" for pos in self._ALL_POSITIONS}
         tile_positions["101"] = "26"   # ALPHA
         tile_positions["201"] = "25"   # BETA
-        tile_type_map, wha = _build_movement_context(tile_positions)
+        tile_type_map, wha, _hla = _build_movement_context(tile_positions)
         assert "201" not in wha.get("101", frozenset())
 
     def test_no_wormholes_no_extra_adjacency(self) -> None:
         tile_positions = {pos: "1" for pos in self._ALL_POSITIONS}
-        _, wha = _build_movement_context(tile_positions)
+        _, wha, _hla = _build_movement_context(tile_positions)
         # No tiles have wormholes → all adjacency sets empty
         assert all(len(v) == 0 for v in wha.values())
 
@@ -354,7 +354,7 @@ class TestWormholeAdjacency:
         # Only one ALPHA tile — no partner → not in adjacency
         tile_positions = {pos: "1" for pos in self._ALL_POSITIONS}
         tile_positions["101"] = "26"  # ALPHA, alone
-        _, wha = _build_movement_context(tile_positions)
+        _, wha, _hla = _build_movement_context(tile_positions)
         assert "101" not in wha
 
 
@@ -396,7 +396,7 @@ class TestGetReachInfo:
         # Ring 2 reached only via 101 (rift) with fleet_move=1.
         # Without rift bonus the ring-2 tiles are unreachable at move 1.
         tile_positions = self._tile_positions({"101": "41"})  # 41 = gravity rift
-        tile_type_map, wha = _build_movement_context(tile_positions)
+        tile_type_map, wha, _hla = _build_movement_context(tile_positions)
         info = _get_reach_info(
             "000", 1, self._OPEN_MAP, "red",
             tile_type_map=tile_type_map,
@@ -578,7 +578,7 @@ class TestCreussWormholeAdjacency:
             "101": "26",  # ALPHA
             "201": "25",  # BETA
         })
-        _, wha = _build_movement_context(tile_positions, creuss_in_game=True)
+        _, wha, _hla = _build_movement_context(tile_positions, creuss_in_game=True)
         assert "201" in wha.get("101", frozenset()), (
             "With Creuss in game, ALPHA tile should be adjacent to BETA tile"
         )
@@ -591,7 +591,7 @@ class TestCreussWormholeAdjacency:
             "101": "26",  # ALPHA
             "201": "25",  # BETA
         })
-        _, wha = _build_movement_context(tile_positions, creuss_in_game=False)
+        _, wha, _hla = _build_movement_context(tile_positions, creuss_in_game=False)
         assert "201" not in wha.get("101", frozenset()), (
             "Without Creuss, ALPHA and BETA tiles should not be adjacent"
         )
@@ -601,7 +601,7 @@ class TestCreussWormholeAdjacency:
             "101": "26",  # ALPHA
             "201": "39",  # ALPHA
         })
-        _, wha = _build_movement_context(tile_positions, creuss_in_game=True)
+        _, wha, _hla = _build_movement_context(tile_positions, creuss_in_game=True)
         assert "201" in wha.get("101", frozenset()), (
             "Two ALPHA tiles should still be adjacent to each other with Creuss"
         )
@@ -611,7 +611,7 @@ class TestCreussWormholeAdjacency:
             "101": "25",  # BETA
             "201": "40",  # BETA
         })
-        _, wha = _build_movement_context(tile_positions, creuss_in_game=True)
+        _, wha, _hla = _build_movement_context(tile_positions, creuss_in_game=True)
         assert "201" in wha.get("101", frozenset()), (
             "Two BETA tiles should still be adjacent to each other with Creuss"
         )
@@ -623,7 +623,7 @@ class TestCreussWormholeAdjacency:
             "101": "26",  # ALPHA (starting pos)
             "201": "25",  # BETA (destination)
         })
-        _, wha = _build_movement_context(tile_positions, creuss_in_game=True)
+        _, wha, _hla = _build_movement_context(tile_positions, creuss_in_game=True)
         result = get_reachable_systems(
             "101", 1, _OPEN_MAP, "red",
             wormhole_adjacency=wha,
@@ -1353,12 +1353,12 @@ class TestHyperlaneBuildMovementContext:
     def test_hyperlane_tile_flagged_in_type_map(self) -> None:
         tile_positions = {pos: "1" for pos in self._ALL_POSITIONS}
         tile_positions["102"] = "83a"  # hyperlane tile at 102
-        tile_type_map, _ = _build_movement_context(tile_positions)
+        tile_type_map, _wha, _hla = _build_movement_context(tile_positions)
         assert tile_type_map.get("102", {}).get("hyperlane") is True
 
     def test_normal_tile_not_flagged_as_hyperlane(self) -> None:
         tile_positions = {pos: "1" for pos in self._ALL_POSITIONS}
-        tile_type_map, _ = _build_movement_context(tile_positions)
+        tile_type_map, _wha, _hla = _build_movement_context(tile_positions)
         for pos in self._ALL_POSITIONS:
             assert not tile_type_map.get(pos, {}).get("hyperlane"), (
                 f"Normal tile {pos} should not have hyperlane flag"
@@ -1367,12 +1367,12 @@ class TestHyperlaneBuildMovementContext:
     def test_hl_prefix_tile_flagged_in_type_map(self) -> None:
         tile_positions = {pos: "1" for pos in self._ALL_POSITIONS}
         tile_positions["201"] = "hl_crossed_0"
-        tile_type_map, _ = _build_movement_context(tile_positions)
+        tile_type_map, _wha, _hla = _build_movement_context(tile_positions)
         assert tile_type_map.get("201", {}).get("hyperlane") is True
 
 
 class TestHyperlaneBFS:
-    """Hyperlane tiles are excluded as destinations but traversable in BFS."""
+    """Hyperlane tiles are excluded as destinations; adjacency uses edge-specific rules."""
 
     _ALL_POSITIONS = (
         ["000"]
@@ -1389,43 +1389,76 @@ class TestHyperlaneBFS:
     def test_hyperlane_tile_not_in_reachable_set(self) -> None:
         """Ships cannot stop on hyperlane tiles."""
         tile_positions = self._tile_positions({"102": "83a"})
-        tile_type_map, wha = _build_movement_context(tile_positions)
+        tile_type_map, wha, hla = _build_movement_context(tile_positions)
         result = get_reachable_systems(
             "101", 3, self._OPEN_MAP, "red",
             tile_type_map=tile_type_map, wormhole_adjacency=wha,
+            hyperlane_adjacency=hla,
         )
         assert "102" not in result
 
-    def test_tiles_beyond_hyperlane_are_reachable(self) -> None:
-        """Tiles on the far side of a hyperlane are reachable (pass-through at 0 cost)."""
-        # Place hyperlane at 102 (between 101 and 202/203/204)
-        # With fleet_move=1 from 101:
-        #   101 → 102 (hyperlane, cost 0) → 202/203/204 (cost 1 from 102)
-        # So 202, 203, 204 should be reachable with move 1.
+    def test_hyperlane_edge_specific_adjacency(self) -> None:
+        """The 83a tile at 102 connects edges 1<->4: neighbors 103 and 202.
+
+        Tile 102's neighbors (edges 0-5): 204, 103, 000, 101, 202, 203.
+        83a connects edge 1 <-> edge 4, so 103 <-> 202.
+        From 103, with move 1, 202 is reachable via the hyperlane (and vice versa).
+        103 is NOT a direct hex-neighbour of 202, so without hyperlane_adjacency
+        it would not be reachable.
+        """
         tile_positions = self._tile_positions({"102": "83a"})
-        tile_type_map, wha = _build_movement_context(tile_positions)
-        result = get_reachable_systems(
-            "101", 1, self._OPEN_MAP, "red",
+        _, _, hla = _build_movement_context(tile_positions)
+        # Verify the hyperlane adjacency was computed correctly
+        assert "202" in hla.get("103", frozenset()), (
+            "103 should be hyperlane-adjacent to 202 via 83a at 102"
+        )
+        assert "103" in hla.get("202", frozenset()), (
+            "202 should be hyperlane-adjacent to 103 via 83a at 102"
+        )
+        # 101 is at edge 3 of 102; 83a does not connect edge 3 to anything
+        assert "101" not in hla, (
+            "101 should have no hyperlane connections (edge 3 is not wired by 83a)"
+        )
+
+    def test_hyperlane_adjacency_used_in_bfs(self) -> None:
+        """Ships reach a tile that is only accessible via hyperlane, not direct hex."""
+        # 83a at 102 connects 103 <-> 202.
+        # 103 is not a direct hex-neighbour of 202.
+        # With move 1 from 103, 202 should be in the reachable set only when
+        # hyperlane_adjacency is passed; without it, 202 is not reachable.
+        tile_positions = self._tile_positions({"102": "83a"})
+        tile_type_map, wha, hla = _build_movement_context(tile_positions)
+
+        # Without hyperlane adjacency: 202 is not reachable from 103 in move 1
+        result_no_hl = get_reachable_systems(
+            "103", 1, self._OPEN_MAP, "red",
             tile_type_map=tile_type_map, wormhole_adjacency=wha,
         )
-        # 202, 203, 204 are adjacent to 102 and should be reachable via hyperlane
-        assert "202" in result or "203" in result or "204" in result
+        assert "202" not in result_no_hl, "202 should not be reachable without hyperlane_adjacency"
+
+        # With hyperlane adjacency: 202 is reachable from 103 in move 1
+        result_with_hl = get_reachable_systems(
+            "103", 1, self._OPEN_MAP, "red",
+            tile_type_map=tile_type_map, wormhole_adjacency=wha,
+            hyperlane_adjacency=hla,
+        )
+        assert "202" in result_with_hl, "202 should be reachable from 103 via the 83a hyperlane"
+        assert "102" not in result_with_hl, "102 (hyperlane tile) should never be a destination"
 
     def test_hyperlane_cc_check_bypassed(self) -> None:
-        """Hyperlane tiles cannot have CCs; the CC check must not block transit."""
+        """A CC on a hyperlane tile must not block transit through it."""
         tile_positions = self._tile_positions({"102": "83a"})
-        tile_type_map, wha = _build_movement_context(tile_positions)
+        tile_type_map, wha, hla = _build_movement_context(tile_positions)
         # Pretend the hyperlane position has a CC (shouldn't happen in real games
-        # but tests that our code doesn't break on it)
+        # but tests that our code doesn't break on it).
         map_with_cc = {
             **self._OPEN_MAP,
             "102": {**_make_tile_data(), "ccs": ["red"]},
         }
         result = get_reachable_systems(
-            "101", 1, map_with_cc, "red",
+            "103", 1, map_with_cc, "red",
             tile_type_map=tile_type_map, wormhole_adjacency=wha,
+            hyperlane_adjacency=hla,
         )
-        # Even with "red" CC on the hyperlane tile, transit should still work
-        assert "102" not in result  # still not a valid destination
-        # tiles beyond 102 are reachable because hyperlane bypasses CC check
-        assert "202" in result or "203" in result or "204" in result
+        assert "102" not in result  # hyperlane tile is never a valid destination
+        assert "202" in result  # connection 103<->202 still works despite fake CC
