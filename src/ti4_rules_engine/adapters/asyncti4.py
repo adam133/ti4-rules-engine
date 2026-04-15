@@ -308,7 +308,10 @@ def _infer_phase(data: AsyncTI4GameData) -> GamePhase:
     ]
     player_count = len(active_players)
     if player_count > 0:
-        expected_picks = (len(data.strategyCards) // player_count) * player_count
+        # Assumes standard TI4-style equal picks per player for the current
+        # player count (with remainder cards skipped).
+        cards_per_player = len(data.strategyCards) // player_count
+        expected_picks = cards_per_player * player_count
         if expected_picks > 0 and len(picked_cards) >= expected_picks:
             return GamePhase.ACTION
 

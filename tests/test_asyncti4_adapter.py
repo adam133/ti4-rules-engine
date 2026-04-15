@@ -233,6 +233,9 @@ class TestPhaseInference:
         }
         state = from_asyncti4(data)
         assert state.phase == GamePhase.ACTION
+        assert state.players["p1"].strategy_card_ids == ["1", "5"]
+        assert state.players["p2"].strategy_card_ids == ["2", "6"]
+        assert state.players["p3"].strategy_card_ids == ["3", "7"]
 
     def test_action_phase_when_all_cards_picked(self) -> None:
         # All strategy cards picked but none played → action phase (picking complete)
