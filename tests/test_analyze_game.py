@@ -935,6 +935,29 @@ class TestTacticalReachByDestination:
         for arrival in all_arrivals:
             assert arrival["needs_gravity_drive"] == []
 
+    def test_mixed_speed_fleet_includes_fast_detachment_destinations(self) -> None:
+        """A faster ship in a mixed-speed fleet can create farther destinations."""
+        tile_unit_data = _make_full_map()
+        tile_unit_data["000"]["space"] = {
+            "myfaction": [
+                {"entityId": "dd", "entityType": "unit", "count": 1},  # move 2
+                {"entityId": "cv", "entityType": "unit", "count": 1},  # move 1
+            ]
+        }
+        state = self._make_state(tile_unit_data)
+        by_dest = _get_tactical_reach("p1", state)["by_destination"]
+
+        # 201 is two hops from 000 in this test map.
+        assert "201" in by_dest
+        detachment_arrivals = [
+            a
+            for a in by_dest["201"]["arrivals"]
+            if a["from_pos"] == "000" and "destroyer" in a["ships"] and "carrier" not in a["ships"]
+        ]
+        assert detachment_arrivals
+        assert all(a["fleet_move"] == 2 for a in detachment_arrivals)
+        assert all(a["capacity"] == 0 for a in detachment_arrivals)
+
 
 # ---------------------------------------------------------------------------
 # New helper functions: _fleet_capacity, _ground_forces_on_planets,

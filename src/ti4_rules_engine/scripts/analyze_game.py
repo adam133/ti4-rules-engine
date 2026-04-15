@@ -792,6 +792,63 @@ def _fleet_move_value(
     return min(move_vals) if move_vals else 0
 
 
+def _iter_fleet_movement_variants(
+    fleet_units: list[dict[str, Any]],
+    ship_move: dict[str, int],
+    *,
+    baseline_move: int,
+) -> list[tuple[list[dict[str, Any]], int]]:
+    """Return movement variants: full fleet baseline plus faster-ship detachments."""
+    variants: list[tuple[list[dict[str, Any]], int]] = []
+    if baseline_move <= 0:
+        return variants
+
+    variants.append((fleet_units, baseline_move))
+
+    faster_moves = {
+        ship_move[eid]
+        for u in fleet_units
+        if isinstance(u, dict)
+        and u.get("entityType") == "unit"
+        and (eid := str(u.get("entityId", ""))) in ship_move
+        and ship_move[eid] > baseline_move
+    }
+    if not faster_moves:
+        return variants
+
+    seen_keys: set[tuple[tuple[str, int], ...]] = set()
+    for min_speed in sorted(faster_moves):
+        detachment: list[dict[str, Any]] = []
+        for u in fleet_units:
+            if not isinstance(u, dict) or u.get("entityType") != "unit":
+                continue
+            eid = str(u.get("entityId", ""))
+            if eid not in ship_move or ship_move[eid] < min_speed:
+                continue
+            detachment.append(u)
+
+        if not detachment:
+            continue
+
+        detachment_move = _fleet_move_value(detachment, ship_move)
+        if detachment_move <= baseline_move:
+            continue
+
+        key = tuple(
+            sorted(
+                (str(u.get("entityId", "")), int(u.get("count", 1)))
+                for u in detachment
+                if isinstance(u, dict) and u.get("entityType") == "unit"
+            )
+        )
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        variants.append((detachment, detachment_move))
+
+    return variants
+
+
 def _summarise_units(units: list[dict[str, Any]]) -> list[str]:
     """Return a sorted list of ``"<name> x<count>"`` strings for space ships.
 
@@ -1299,25 +1356,6 @@ def _get_tactical_reach(
         if fleet_move <= 0:
             continue
 
-        reach_info = _get_reach_info(
-            tile_pos,
-            fleet_move,
-            tile_unit_data,
-            faction,
-            tile_type_map=tile_type_map,
-            wormhole_adjacency=wormhole_adjacency,
-            hyperlane_adjacency=hyperlane_adjacency,
-            has_antimass_deflectors=has_amd,
-        )
-
-        if not reach_info:
-            # No adjacency reachable (e.g. special position with no wormholes)
-            no_adjacency.append(tile_pos)
-            continue
-
-        unit_labels = _summarise_units(fleet_units)
-        capacity = _fleet_capacity(fleet_units, faction_ship_capacity)
-
         # Ground forces already in the fleet (in space area + on planets in starting tile)
         gf_space = _ground_forces_in_space(fleet_units)
         gf_planets = _ground_forces_on_planets(tile_data, faction)
@@ -1327,79 +1365,107 @@ def _get_tactical_reach(
             if total > 0:
                 combined_gf[eid] = total
 
-        # Identify intermediate systems (closer to start than any given destination)
-        # that have player ground forces on planets and no CC present.
-        # These represent possible pickups on the way.
-        intermediate_gf: dict[str, dict[str, int]] = {}
-        for mid_pos, mid_info in reach_info.items():
-            mid_tile_data = tile_unit_data.get(mid_pos) or {}
-            if faction in mid_tile_data.get("ccs", []):
-                continue  # locked system — can't pick up
-            mid_gf = _ground_forces_on_planets(mid_tile_data, faction)
-            if mid_gf:
-                intermediate_gf[mid_pos] = mid_gf
+        movement_variants = _iter_fleet_movement_variants(
+            fleet_units, faction_ship_move, baseline_move=fleet_move
+        )
+        any_reach = False
 
-        for dest, info in reach_info.items():
-            path_cost = info["path_cost"]
-            via_rift = info["via_rift"]
+        for variant_units, variant_move in movement_variants:
+            reach_info = _get_reach_info(
+                tile_pos,
+                variant_move,
+                tile_unit_data,
+                faction,
+                tile_type_map=tile_type_map,
+                wormhole_adjacency=wormhole_adjacency,
+                hyperlane_adjacency=hyperlane_adjacency,
+                has_antimass_deflectors=has_amd,
+            )
+            if not reach_info:
+                continue
+            any_reach = True
 
-            # Initialise destination entry if not yet present
-            if dest not in by_destination:
-                planets = list((tile_unit_data.get(dest) or {}).get("planets", {}).keys())
-                # Collect enemy units in this destination's space area
-                dest_space = (tile_unit_data.get(dest) or {}).get("space") or {}
-                defenders: dict[str, list[str]] = {}
-                dest_space_items = dest_space.items() if isinstance(dest_space, dict) else []
-                for other_faction, other_units in dest_space_items:
-                    if other_faction == faction:
+            unit_labels = _summarise_units(variant_units)
+            capacity = _fleet_capacity(variant_units, faction_ship_capacity)
+
+            # Identify intermediate systems (closer to start than any given destination)
+            # that have player ground forces on planets and no CC present.
+            # These represent possible pickups on the way.
+            intermediate_gf: dict[str, dict[str, int]] = {}
+            for mid_pos in reach_info:
+                mid_tile_data = tile_unit_data.get(mid_pos) or {}
+                if faction in mid_tile_data.get("ccs", []):
+                    continue  # locked system — can't pick up
+                mid_gf = _ground_forces_on_planets(mid_tile_data, faction)
+                if mid_gf:
+                    intermediate_gf[mid_pos] = mid_gf
+
+            for dest, info in reach_info.items():
+                path_cost = info["path_cost"]
+                via_rift = info["via_rift"]
+
+                # Initialise destination entry if not yet present
+                if dest not in by_destination:
+                    planets = list((tile_unit_data.get(dest) or {}).get("planets", {}).keys())
+                    # Collect enemy units in this destination's space area
+                    dest_space = (tile_unit_data.get(dest) or {}).get("space") or {}
+                    defenders: dict[str, list[str]] = {}
+                    dest_space_items = dest_space.items() if isinstance(dest_space, dict) else []
+                    for other_faction, other_units in dest_space_items:
+                        if other_faction == faction:
+                            continue
+                        labels = _summarise_units(other_units) if isinstance(other_units, list) else []
+                        if labels:
+                            defenders[other_faction] = labels
+                    by_destination[dest] = {
+                        "planets": planets,
+                        "arrivals": [],
+                        "defenders": defenders,
+                        "combat_result": None,
+                    }
+
+                # Needs Gravity Drive: ships whose individual move < path_cost
+                needs_gd_seen: set[str] = set()
+                needs_gd: list[str] = []
+                for u in variant_units:
+                    if not isinstance(u, dict) or u.get("entityType") != "unit":
                         continue
-                    labels = _summarise_units(other_units) if isinstance(other_units, list) else []
-                    if labels:
-                        defenders[other_faction] = labels
-                by_destination[dest] = {
-                    "planets": planets,
-                    "arrivals": [],
-                    "defenders": defenders,
-                    "combat_result": None,
-                }
+                    eid = u.get("entityId", "")
+                    if eid not in faction_ship_move:
+                        continue
+                    ind_move = faction_ship_move[eid]
+                    if ind_move < path_cost:
+                        label = _UNIT_NAMES.get(eid, eid)
+                        cnt = u.get("count", 1)
+                        entry = label if cnt == 1 else f"{label} x{cnt}"
+                        if entry not in needs_gd_seen:
+                            needs_gd_seen.add(entry)
+                            needs_gd.append(entry)
 
-            # Needs Gravity Drive: ships whose individual move < path_cost
-            needs_gd_seen: set[str] = set()
-            needs_gd: list[str] = []
-            for u in fleet_units:
-                if not isinstance(u, dict) or u.get("entityType") != "unit":
-                    continue
-                eid = u.get("entityId", "")
-                if eid not in faction_ship_move:
-                    continue
-                ind_move = faction_ship_move[eid]
-                if ind_move < path_cost:
-                    label = _UNIT_NAMES.get(eid, eid)
-                    cnt = u.get("count", 1)
-                    entry = label if cnt == 1 else f"{label} x{cnt}"
-                    if entry not in needs_gd_seen:
-                        needs_gd_seen.add(entry)
-                        needs_gd.append(entry)
+                # Intermediate pickup systems: those with path_cost < dest path_cost
+                pickup_systems: dict[str, list[str]] = {}
+                for mid_pos, mid_gf in intermediate_gf.items():
+                    mid_path_cost = reach_info.get(mid_pos, {}).get("path_cost", path_cost)
+                    if mid_path_cost < path_cost:
+                        labels = _summarise_ground_forces(mid_gf)
+                        if labels:
+                            pickup_systems[mid_pos] = labels
 
-            # Intermediate pickup systems: those with path_cost < dest path_cost
-            pickup_systems: dict[str, list[str]] = {}
-            for mid_pos, mid_gf in intermediate_gf.items():
-                mid_path_cost = reach_info.get(mid_pos, {}).get("path_cost", path_cost)
-                if mid_path_cost < path_cost:
-                    labels = _summarise_ground_forces(mid_gf)
-                    if labels:
-                        pickup_systems[mid_pos] = labels
+                by_destination[dest]["arrivals"].append({
+                    "from_pos": tile_pos,
+                    "ships": unit_labels,
+                    "fleet_move": variant_move,
+                    "capacity": capacity,
+                    "ground_forces": _summarise_ground_forces(combined_gf) if capacity > 0 else [],
+                    "pickup_systems": pickup_systems if capacity > 0 else {},
+                    "via_rift": via_rift,
+                    "needs_gravity_drive": needs_gd,
+                })
 
-            by_destination[dest]["arrivals"].append({
-                "from_pos": tile_pos,
-                "ships": unit_labels,
-                "fleet_move": fleet_move,
-                "capacity": capacity,
-                "ground_forces": _summarise_ground_forces(combined_gf),
-                "pickup_systems": pickup_systems,
-                "via_rift": via_rift,
-                "needs_gravity_drive": needs_gd,
-            })
+        if not any_reach:
+            # No adjacency reachable (e.g. special position with no wormholes)
+            no_adjacency.append(tile_pos)
+            continue
 
     # For the active player, run combat simulations against defenders.
     if is_active:
