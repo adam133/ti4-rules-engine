@@ -656,6 +656,7 @@ class TestTacticalReachByDestination:
         faction: str = "myfaction",
         player_id: str = "p1",
         active_player_id: str | None = None,
+        researched_technologies: list[str] | None = None,
     ):
         from ti4_rules_engine.models.state import GameState, PlayerState, TurnOrder
         return GameState(
@@ -668,7 +669,7 @@ class TestTacticalReachByDestination:
                     faction_id=faction,
                     controlled_planets=[],
                     exhausted_planets=[],
-                    researched_technologies=[],
+                    researched_technologies=researched_technologies or [],
                 )
             },
             extra={"tile_unit_data": tile_unit_data, "tile_positions": {}},
@@ -735,6 +736,33 @@ class TestTacticalReachByDestination:
         by_dest = _get_tactical_reach("p1", state)["by_destination"]
         all_arrivals = [a for d in by_dest.values() for a in d["arrivals"]]
         assert all_arrivals[0]["capacity"] == 4
+
+    def test_fighter_ii_excess_can_move_independently(self) -> None:
+        tile_unit_data = _make_full_map()
+        tile_unit_data["000"]["space"] = {
+            "myfaction": [{"entityId": "ff", "entityType": "unit", "count": 1}]
+        }
+        state = self._make_state(tile_unit_data, researched_technologies=["ff2"])
+        by_dest = _get_tactical_reach("p1", state)["by_destination"]
+        assert "201" in by_dest  # two hops away from 000
+
+    def test_space_dock_fighter_capacity_blocks_fighter_ii_excess(self) -> None:
+        tile_unit_data = _make_full_map()
+        tile_unit_data["000"]["space"] = {
+            "myfaction": [{"entityId": "ff", "entityType": "unit", "count": 3}]
+        }
+        tile_unit_data["000"]["planets"] = {
+            "homeworld": {
+                "resources": 4,
+                "influence": 0,
+                "entities": {
+                    "myfaction": [{"entityId": "sd", "entityType": "unit", "count": 1}]
+                },
+            }
+        }
+        state = self._make_state(tile_unit_data, researched_technologies=["ff2"])
+        by_dest = _get_tactical_reach("p1", state)["by_destination"]
+        assert by_dest == {}
 
     def test_ground_forces_from_space(self) -> None:
         """Infantry already in fleet space area are reported in ground_forces."""
@@ -933,6 +961,49 @@ class TestFleetCapacity:
     def test_empty_fleet(self) -> None:
         from ti4_rules_engine.scripts.analyze_game import _fleet_capacity
         assert _fleet_capacity([]) == 0
+
+
+class TestFullMapSummary:
+    def test_build_full_map_lines_lists_all_tiles_and_entities(self) -> None:
+        from ti4_rules_engine.models.state import GameState, PlayerState, TurnOrder
+        from ti4_rules_engine.scripts.analyze_game import _build_full_map_lines
+
+        tile_unit_data = {
+            "000": {
+                "ccs": ["red"],
+                "space": {
+                    "red": [
+                        {"entityId": "cv", "entityType": "unit", "count": 1},
+                        {"entityId": "ff", "entityType": "unit", "count": 2},
+                    ],
+                    "neutral": [{"entityId": "frontier", "entityType": "token", "count": 1}],
+                },
+                "planets": {
+                    "mecatol": {
+                        "entities": {
+                            "red": [{"entityId": "sd", "entityType": "unit", "count": 1}],
+                        }
+                    }
+                },
+            },
+            "101": {"ccs": [], "space": {}, "planets": {}},
+        }
+        state = GameState(
+            game_id="g",
+            turn_order=TurnOrder(speaker_id="p1", order=["p1"]),
+            players={"p1": PlayerState(player_id="p1", faction_id="red")},
+            extra={"tile_unit_data": tile_unit_data, "tile_positions": {"000": "18", "101": "19"}},
+        )
+
+        lines = _build_full_map_lines(state)
+        out = "\n".join(lines)
+        assert "000 (tile 18)" in out
+        assert "101 (tile 19)" in out
+        assert "CCs: red" in out
+        assert "space/red: carrier, fighter x2" in out
+        assert "space/neutral: frontier" in out
+        assert "planet/mecatol/red: space dock" in out
+        assert "(no units/tokens)" in out
 
 
 class TestGroundForcesOnPlanets:
