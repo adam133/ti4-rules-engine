@@ -1322,12 +1322,12 @@ class TestObjectiveData:
         assert data["expand_borders"]["type"] == "stage_1"
         assert data["expand_borders"]["points"] == 1
 
-    def test_command_an_armada_stage_2(self) -> None:
+    def test_command_armada_stage_2(self) -> None:
         from ti4_rules_engine.scripts.analyze_game import fetch_objective_data
         data = fetch_objective_data()
-        assert "command_an_armada" in data
-        assert data["command_an_armada"]["type"] == "stage_2"
-        assert data["command_an_armada"]["points"] == 2
+        assert "command_armada" in data
+        assert data["command_armada"]["type"] == "stage_2"
+        assert data["command_armada"]["points"] == 2
 
     def test_push_boundaries_alias_from_public_objectives(self) -> None:
         from ti4_rules_engine.scripts.analyze_game import fetch_objective_data
@@ -1335,6 +1335,12 @@ class TestObjectiveData:
         assert "push_boundaries" in data
         assert data["push_boundaries"]["name"] == "Push Boundaries"
         assert "neighbors" in data["push_boundaries"]["description"]
+
+    def test_amass_wealth_condition_from_public_objectives(self) -> None:
+        from ti4_rules_engine.scripts.analyze_game import fetch_objective_data
+        data = fetch_objective_data()
+        assert "amass_wealth" in data
+        assert "Spend 3 influence" in data["amass_wealth"]["description"]
 
     def test_format_objective_known_id(self) -> None:
         from ti4_rules_engine.scripts.analyze_game import _format_objective, fetch_objective_data

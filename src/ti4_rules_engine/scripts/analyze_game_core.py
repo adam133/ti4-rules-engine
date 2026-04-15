@@ -68,7 +68,6 @@ from ti4_rules_engine.scripts._data_loaders import (  # noqa: F401
     _DATA_DIR,
     _FIGHTER_II_TECH_ID,
     _LEADERS_DATA_FILE,
-    _OBJECTIVES_DATA_FILE,
     _PUBLIC_OBJECTIVES_DATA_FILE,
     _TECH_DATA_FILE,
     _UNITS_DATA_DIR,
@@ -167,9 +166,19 @@ def fetch_game_json(game_number: str) -> dict:
 
 def print_game_summary(state: GameState) -> None:
     """Print a human-readable summary of the game state."""
-    # Merge bundled objective data with API-provided data (API takes precedence,
-    # so expansion/custom objectives not in objectives.json are still named).
-    obj_data = {**fetch_objective_data(), **state.extra.get("objective_data", {})}
+    # Merge bundled objective data with API-provided data while preserving
+    # bundled condition text when API data omits descriptions.
+    obj_data = fetch_objective_data().copy()
+    for obj_id, api_rec in state.extra.get("objective_data", {}).items():
+        if not isinstance(api_rec, dict):
+            continue
+        merged = dict(obj_data.get(obj_id, {}))
+        merged.update(api_rec)
+        if not _get_objective_condition_text(merged):
+            bundled_desc = _get_objective_condition_text(obj_data.get(obj_id, {}))
+            if bundled_desc:
+                merged["description"] = bundled_desc
+        obj_data[obj_id] = merged
 
     print()
     print("=" * 60)
@@ -243,8 +252,19 @@ def print_player_summary(state: GameState, player_options_map: dict) -> None:
     tech_names = fetch_tech_names()
     action_techs = fetch_action_tech_names()
     leader_registry = fetch_leader_data()
-    # Merge bundled objective data with API-provided data (API takes precedence).
-    obj_data = {**fetch_objective_data(), **state.extra.get("objective_data", {})}
+    # Merge bundled objective data with API-provided data while preserving
+    # bundled condition text when API data omits descriptions.
+    obj_data = fetch_objective_data().copy()
+    for obj_id, api_rec in state.extra.get("objective_data", {}).items():
+        if not isinstance(api_rec, dict):
+            continue
+        merged = dict(obj_data.get(obj_id, {}))
+        merged.update(api_rec)
+        if not _get_objective_condition_text(merged):
+            bundled_desc = _get_objective_condition_text(obj_data.get(obj_id, {}))
+            if bundled_desc:
+                merged["description"] = bundled_desc
+        obj_data[obj_id] = merged
     tile_unit_data: dict[str, Any] = state.extra.get("tile_unit_data", {})
     planet_ri = _get_planet_ri(tile_unit_data)
     player_leaders: dict[str, list[dict[str, Any]]] = state.extra.get("player_leaders", {})

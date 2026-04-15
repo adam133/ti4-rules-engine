@@ -32,7 +32,6 @@ from ti4_rules_engine.models.unit import Unit, UnitType
 
 _DATA_DIR = pathlib.Path(__file__).parent.parent / "data"
 _TECH_DATA_FILE = _DATA_DIR / "technologies.json"
-_OBJECTIVES_DATA_FILE = _DATA_DIR / "objectives.json"
 _PUBLIC_OBJECTIVES_DATA_FILE = _DATA_DIR / "public_objectives.json"
 _LEADERS_DATA_FILE = _DATA_DIR / "leaders.json"
 _UNITS_DATA_DIR = _DATA_DIR / "units"
@@ -143,18 +142,12 @@ def _load_action_tech_names_cached() -> dict[str, str]:
 
 
 def fetch_objective_data() -> dict[str, dict[str, Any]]:
-    """Load full objective data from the bundled data files.
+    """Load full objective data from the bundled data file.
 
     Returns a dict mapping objective ID (e.g. ``"expand_borders"``) to the full
-    objective record.  Data is loaded in two passes:
-
-    1. ``data/objectives.json`` — primary source; each entry is stored by its ``id`` key.
-    2. ``data/public_objectives.json`` — AsyncTI4 bot format; entries whose alias is
-       *not* already present in the result are added verbatim.  For entries that *are*
-       already present, only the condition text is backfilled if it was missing.
-
-    In effect, ``objectives.json`` takes precedence for any duplicate IDs.
-    Falls back to an empty dict if neither file can be read.
+    objective record. Data is loaded from ``data/public_objectives.json``
+    (ported from the AsyncTI4 bot).
+    Falls back to an empty dict if the file cannot be read.
     Results are cached after the first call.
     """
     return _load_objective_data_cached()
@@ -164,23 +157,6 @@ def fetch_objective_data() -> dict[str, dict[str, Any]]:
 def _load_objective_data_cached() -> dict[str, dict[str, Any]]:
     """Cached implementation of :func:`fetch_objective_data`."""
     objective_data: dict[str, dict[str, Any]] = {}
-    try:
-        with _OBJECTIVES_DATA_FILE.open(encoding="utf-8") as fh:
-            objectives: list[dict[str, Any]] = json.load(fh)
-        objective_data.update(
-            {
-                obj["id"]: obj
-                for obj in objectives
-                if isinstance(obj, dict) and "id" in obj
-            }
-        )
-    except (OSError, json.JSONDecodeError, KeyError, TypeError) as exc:
-        print(
-            f"Warning: could not load objective data from {_OBJECTIVES_DATA_FILE} ({exc!r}); "
-            "showing raw objective IDs.",
-            file=sys.stderr,
-        )
-
     try:
         with _PUBLIC_OBJECTIVES_DATA_FILE.open(encoding="utf-8") as fh:
             public_objectives: list[dict[str, Any]] = json.load(fh)
@@ -208,14 +184,14 @@ def _load_objective_data_cached() -> dict[str, dict[str, Any]]:
                 public_entry["type"] = "stage_2"
             else:
                 public_entry["type"] = "public"
-            if alias in objective_data:
-                # Keep existing local data but backfill missing condition text.
-                if not _get_objective_condition_text(objective_data[alias]):
-                    objective_data[alias]["description"] = description
-            else:
-                objective_data[alias] = public_entry
-    except (OSError, json.JSONDecodeError, KeyError, TypeError):
-        pass
+            objective_data[alias] = public_entry
+    except (OSError, json.JSONDecodeError, KeyError, TypeError) as exc:
+        print(
+            "Warning: could not load objective data from "
+            f"{_PUBLIC_OBJECTIVES_DATA_FILE} ({exc!r}); "
+            "showing raw objective IDs.",
+            file=sys.stderr,
+        )
 
     if objective_data:
         return objective_data
