@@ -390,14 +390,14 @@ def _load_fighter_ii_aliases_cached() -> frozenset[str]:
             if isinstance(t, dict)
             and "alias" in t
             and (
-                t.get("alias") == "ff2"
-                or t.get("baseUpgrade") == "ff2"
+                t.get("alias") == _FIGHTER_II_TECH_ID
+                or t.get("baseUpgrade") == _FIGHTER_II_TECH_ID
             )
         }
-        aliases.add("ff2")
+        aliases.add(_FIGHTER_II_TECH_ID)
         return frozenset(aliases)
     except (OSError, json.JSONDecodeError, KeyError, TypeError):
-        return frozenset({"ff2"})
+        return frozenset({_FIGHTER_II_TECH_ID})
 
 
 @functools.cache
@@ -679,6 +679,7 @@ _TRANSPORTED_UNITS = frozenset({"ff", "gf", "mf"})  # fighter, ground force, mec
 _GROUND_FORCE_IDS = frozenset({"gf", "mf"})
 _FIGHTER_ENTITY_ID = "ff"
 _SPACE_DOCK_ENTITY_ID = "sd"
+_FIGHTER_II_TECH_ID = "ff2"
 _DEFAULT_SPACE_DOCK_FIGHTER_CAPACITY = 3
 _FIGHTER_II_MOVE_SPEED = 2
 
@@ -1404,7 +1405,7 @@ def _get_planet_ri(
 
 
 def _tile_position_sort_key(pos: str) -> tuple[int, int, str]:
-    """Sort numeric map positions by ring/tile, then special positions lexicographically."""
+    """Sort numeric map positions first by integer value, then special positions alphabetically."""
     try:
         pos_int = int(pos)
         return (0, pos_int, "")
