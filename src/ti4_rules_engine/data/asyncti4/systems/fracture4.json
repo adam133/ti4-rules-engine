@@ -1,0 +1,18 @@
+{
+    "id": "fracture4",
+    "name": "Styx",
+    "aliases": [
+        "fracture4",
+        "styx",
+        "sticks",
+        "stix",
+        "frac4"
+    ],
+    "imagePath": "fracture4.png",
+    "planets": [
+        "styx"
+    ],
+    "shipPositionsType": "TYPE04",
+    "tileBack": "fracture",
+    "source": "thunders_edge"
+}
