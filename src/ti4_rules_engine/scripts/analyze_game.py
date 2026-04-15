@@ -346,13 +346,44 @@ def _build_hyperlane_adjacency(
     for pos, tile_id in tile_positions.items():
         if _is_hyperlane_tile_id(tile_id):
             continue
-        for hl_neighbor in get_adjacent_positions(pos):
-            if hl_neighbor not in existing:
-                continue
+        hl_neighbors = [
+            hl_neighbor
+            for hl_neighbor in get_adjacent_positions(pos)
+            if hl_neighbor in existing
+            and _is_hyperlane_tile_id(tile_positions.get(hl_neighbor, ""))
+        ]
+        for hl_neighbor in hl_neighbors:
             hl_tile_id = tile_positions.get(hl_neighbor, "")
-            if not _is_hyperlane_tile_id(hl_tile_id):
-                continue
             dests = _traverse(hl_neighbor, pos, frozenset())
+            if (
+                not dests
+                and len(hl_neighbors) >= _MIN_HYPERLANE_NEIGHBORS_FOR_FALLBACK
+            ):
+                # Fallback for maps whose hyperlane tile rotation metadata does not
+                # align with this position ordering: try all possible entry rows on
+                # the first hyperlane tile, then continue strict traversal.
+                matrix = connections.get(hl_tile_id)
+                if matrix is not None:
+                    neighbors = get_adjacent_positions(hl_neighbor)
+                    fallback_dests: set[str] = set()
+                    for row in matrix:
+                        for exit_edge, connected in enumerate(row):
+                            if not connected or exit_edge >= len(neighbors):
+                                continue
+                            exit_pos = neighbors[exit_edge]
+                            if exit_pos not in existing:
+                                continue
+                            exit_tile_id = tile_positions.get(exit_pos, "")
+                            if _is_hyperlane_tile_id(exit_tile_id):
+                                fallback_dests |= _traverse(
+                                    exit_pos,
+                                    hl_neighbor,
+                                    frozenset({hl_neighbor}),
+                                )
+                            else:
+                                fallback_dests.add(exit_pos)
+                    fallback_dests.discard(pos)
+                    dests = fallback_dests
             if dests:
                 result.setdefault(pos, set()).update(dests)
 
@@ -748,6 +779,9 @@ _SPACE_DOCK_ENTITY_ID = "sd"
 _FIGHTER_II_TECH_ID = "ff2"
 _DEFAULT_SPACE_DOCK_FIGHTER_CAPACITY = 3
 _FIGHTER_II_MOVE_SPEED = 2
+# Entry-agnostic fallback is only enabled when a source has 2+ adjacent
+# hyperlane connectors (branch points), where rotation mismatches are most likely.
+_MIN_HYPERLANE_NEIGHBORS_FOR_FALLBACK = 2
 
 # Unit registries built from data/units/baseUnits.json.
 # These are populated at first use via fetch_unit_data().
@@ -1016,6 +1050,53 @@ def _summarise_ground_forces(gf_counts: dict[str, int]) -> list[str]:
     return parts
 
 
+def _summarise_transportable_units(unit_counts: dict[str, int]) -> list[str]:
+    """Return transportable-unit labels in fighter → mech → infantry order."""
+    parts: list[str] = []
+    for eid in ("ff", "mf", "gf"):
+        cnt = unit_counts.get(eid, 0)
+        if cnt <= 0:
+            continue
+        name = _UNIT_NAMES.get(eid, eid)
+        parts.append(name if cnt == 1 else f"{name} x{cnt}")
+    return parts
+
+
+def _compute_starting_transport_payload(
+    variant_units: list[dict[str, Any]],
+    *,
+    tile_data: dict[str, Any],
+    faction: str,
+    capacity: int,
+) -> dict[str, int]:
+    """Return transported-unit counts that this moving fleet can actually carry from its origin."""
+    onboard = _count_units_by_entity_id(variant_units)
+    payload: dict[str, int] = {}
+    for eid in ("ff", "mf", "gf"):
+        cnt = onboard.get(eid, 0)
+        if cnt > 0:
+            payload[eid] = cnt
+
+    used_capacity = sum(payload.values())
+    remaining_capacity = max(0, capacity - used_capacity)
+    # All capacity is already consumed by onboard transportable units.
+    if remaining_capacity == 0:
+        return payload
+
+    planet_gf = _ground_forces_on_planets(tile_data, faction)
+    for eid in ("mf", "gf"):
+        if remaining_capacity <= 0:
+            break
+        available = planet_gf.get(eid, 0)
+        if available <= 0:
+            continue
+        loadable = min(available, remaining_capacity)
+        payload[eid] = payload.get(eid, 0) + loadable
+        remaining_capacity -= loadable
+
+    return payload
+
+
 def _build_combat_group(
     units: list[dict[str, Any]],
     combat_units: dict[str, Unit] | None = None,
@@ -1273,8 +1354,10 @@ def _get_tactical_reach(
             * ``"ships"`` – human-readable ship list (no fighters/infantry/mechs).
             * ``"fleet_move"`` – fleet movement value.
             * ``"capacity"`` – total transport capacity of the fleet.
-            * ``"ground_forces"`` – infantry/mechs already carried (from
-              starting tile space area + planets in the starting tile).
+            * ``"ground_forces"`` – infantry/mechs this fleet can carry from
+              its starting tile (respecting capacity).
+            * ``"transported_units"`` – fighters/mechs/infantry this fleet can
+              carry from its starting tile (respecting capacity).
             * ``"pickup_systems"`` – ``{pos: [gf_labels]}`` of player-controlled
               ground forces on planets in intermediate systems (i.e. systems
               between the starting pos and the destination that are not CC-locked).
@@ -1356,15 +1439,6 @@ def _get_tactical_reach(
         if fleet_move <= 0:
             continue
 
-        # Ground forces already in the fleet (in space area + on planets in starting tile)
-        gf_space = _ground_forces_in_space(fleet_units)
-        gf_planets = _ground_forces_on_planets(tile_data, faction)
-        combined_gf: dict[str, int] = {}
-        for eid in ("gf", "mf"):
-            total = gf_space.get(eid, 0) + gf_planets.get(eid, 0)
-            if total > 0:
-                combined_gf[eid] = total
-
         movement_variants = _iter_fleet_movement_variants(
             fleet_units, faction_ship_move, baseline_move=fleet_move
         )
@@ -1387,6 +1461,16 @@ def _get_tactical_reach(
 
             unit_labels = _summarise_units(variant_units)
             capacity = _fleet_capacity(variant_units, faction_ship_capacity)
+            starting_payload = _compute_starting_transport_payload(
+                variant_units,
+                tile_data=tile_data,
+                faction=faction,
+                capacity=capacity,
+            )
+            payload_ground_forces = {
+                eid: starting_payload.get(eid, 0) for eid in _GROUND_FORCE_IDS
+            }
+            pickup_capacity_remaining = max(0, capacity - sum(starting_payload.values()))
 
             # Identify intermediate systems (closer to start than any given destination)
             # that have player ground forces on planets and no CC present.
@@ -1449,9 +1533,22 @@ def _get_tactical_reach(
                 # Intermediate pickup systems: those with path_cost < dest path_cost
                 pickup_systems: dict[str, list[str]] = {}
                 for mid_pos, mid_gf in intermediate_gf.items():
+                    if pickup_capacity_remaining <= 0:
+                        continue
                     mid_path_cost = reach_info.get(mid_pos, {}).get("path_cost", path_cost)
                     if mid_path_cost < path_cost:
-                        labels = _summarise_ground_forces(mid_gf)
+                        remaining_for_mid = pickup_capacity_remaining
+                        pickup_counts: dict[str, int] = {}
+                        for eid in ("mf", "gf"):
+                            if remaining_for_mid <= 0:
+                                break
+                            available = mid_gf.get(eid, 0)
+                            if available <= 0:
+                                continue
+                            take = min(available, remaining_for_mid)
+                            pickup_counts[eid] = take
+                            remaining_for_mid -= take
+                        labels = _summarise_ground_forces(pickup_counts)
                         if labels:
                             pickup_systems[mid_pos] = labels
 
@@ -1460,7 +1557,8 @@ def _get_tactical_reach(
                     "ships": unit_labels,
                     "fleet_move": variant_move,
                     "capacity": capacity,
-                    "ground_forces": _summarise_ground_forces(combined_gf),
+                    "ground_forces": _summarise_ground_forces(payload_ground_forces),
+                    "transported_units": _summarise_transportable_units(starting_payload),
                     "pickup_systems": pickup_systems,
                     "via_rift": via_rift,
                     "needs_gravity_drive": needs_gd,
@@ -2048,12 +2146,19 @@ def print_player_summary(state: GameState, player_options_map: dict) -> None:
                                 f"        ← from {arrival['from_pos']}"
                                 f" [{ships_str}, move {arrival['fleet_move']}{cap_str}]{flag_str}"
                             )
-                            gf = arrival["ground_forces"]
-                            if gf:
+                            cargo = arrival.get("transported_units") or []
+                            if cargo:
                                 print(
-                                    f"          ground forces: {', '.join(gf)}"
+                                    f"          cargo options: {', '.join(cargo)}"
                                     f" (from {arrival['from_pos']})"
                                 )
+                            else:
+                                gf = arrival["ground_forces"]
+                                if gf:
+                                    print(
+                                        f"          ground forces: {', '.join(gf)}"
+                                        f" (from {arrival['from_pos']})"
+                                    )
                             pickup = arrival.get("pickup_systems", {})
                             for pick_pos in sorted(pickup):
                                 pick_labels = pickup[pick_pos]
