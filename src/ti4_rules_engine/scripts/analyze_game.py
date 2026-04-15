@@ -816,7 +816,7 @@ def _iter_fleet_movement_variants(
     if not faster_moves:
         return variants
 
-    seen_keys: set[tuple[tuple[str, int], ...]] = set()
+    seen_variant_signatures: set[tuple[tuple[str, int], ...]] = set()
     for min_speed in sorted(faster_moves):
         detachment: list[dict[str, Any]] = []
         for u in fleet_units:
@@ -841,9 +841,9 @@ def _iter_fleet_movement_variants(
                 if isinstance(u, dict) and u.get("entityType") == "unit"
             )
         )
-        if key in seen_keys:
+        if key in seen_variant_signatures:
             continue
-        seen_keys.add(key)
+        seen_variant_signatures.add(key)
         variants.append((detachment, detachment_move))
 
     return variants
@@ -1414,7 +1414,11 @@ def _get_tactical_reach(
                     for other_faction, other_units in dest_space_items:
                         if other_faction == faction:
                             continue
-                        labels = _summarise_units(other_units) if isinstance(other_units, list) else []
+                        labels = (
+                            _summarise_units(other_units)
+                            if isinstance(other_units, list)
+                            else []
+                        )
                         if labels:
                             defenders[other_faction] = labels
                     by_destination[dest] = {
@@ -1456,8 +1460,8 @@ def _get_tactical_reach(
                     "ships": unit_labels,
                     "fleet_move": variant_move,
                     "capacity": capacity,
-                    "ground_forces": _summarise_ground_forces(combined_gf) if capacity > 0 else [],
-                    "pickup_systems": pickup_systems if capacity > 0 else {},
+                    "ground_forces": _summarise_ground_forces(combined_gf),
+                    "pickup_systems": pickup_systems,
                     "via_rift": via_rift,
                     "needs_gravity_drive": needs_gd,
                 })
