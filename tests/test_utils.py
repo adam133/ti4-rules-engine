@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from utils.asset_mapping import AssetMapper, AssetType
+from ti4_rules_engine.utils.asset_mapping import AssetMapper, AssetType
 
 
 class TestAssetMapper:

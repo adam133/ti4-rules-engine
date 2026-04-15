@@ -12,8 +12,8 @@ enforce these options.
 
 Example::
 
-    from engine.options import get_player_options
-    from models.state import GamePhase
+    from ti4_rules_engine.engine.options import get_player_options
+    from ti4_rules_engine.models.state import GamePhase
 
     options = get_player_options(state, player_id="alice")
     print(options.phase, options.available_actions)
@@ -25,10 +25,10 @@ from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
-from models.objective import Objective
-from models.planet import Planet
-from models.state import AgendaPhaseStep, GamePhase, GameState, StatusPhaseStep
-from models.technology import Technology
+from ti4_rules_engine.models.objective import Objective
+from ti4_rules_engine.models.planet import Planet
+from ti4_rules_engine.models.state import AgendaPhaseStep, GamePhase, GameState, StatusPhaseStep
+from ti4_rules_engine.models.technology import Technology
 
 
 class PlayerAction(StrEnum):
@@ -332,7 +332,7 @@ def get_public_player_info(
     KeyError
         If *player_id* is not present in *state*.
     """
-    from engine.scoring import can_score_objective
+    from ti4_rules_engine.engine.scoring import can_score_objective
 
     base_opts = get_player_options(state, player_id)
 

@@ -8,8 +8,8 @@ map to enumerate every system reachable in a single tactical movement step.
 
 Example usage::
 
-    from engine.movement import get_fleet_move, get_reachable_systems
-    from models.map import GalaxyMap, System
+    from ti4_rules_engine.engine.movement import get_fleet_move, get_reachable_systems
+    from ti4_rules_engine.models.map import GalaxyMap, System
 
     galaxy = GalaxyMap(systems={
         "start": System(id="start", adjacent_system_ids=["a", "b"]),
@@ -28,8 +28,8 @@ from __future__ import annotations
 
 from collections import deque
 
-from models.map import AnomalyType, GalaxyMap
-from models.unit import UnitType
+from ti4_rules_engine.models.map import AnomalyType, GalaxyMap
+from ti4_rules_engine.models.unit import UnitType
 
 # Unit types that are transported inside ships and do not contribute to the
 # fleet's movement speed.

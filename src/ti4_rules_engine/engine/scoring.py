@@ -16,10 +16,10 @@ enforcement to the external controller.
 
 Example::
 
-    from engine.scoring import can_score_objective, score_points_available
-    from models.objective import Objective, ObjectiveType, ScoringCondition, ScoringConditionType
-    from models.planet import Planet
-    from models.technology import TechCategory, Technology
+    from ti4_rules_engine.engine.scoring import can_score_objective, score_points_available
+    from ti4_rules_engine.models.objective import Objective, ObjectiveType, ScoringCondition, ScoringConditionType
+    from ti4_rules_engine.models.planet import Planet
+    from ti4_rules_engine.models.technology import TechCategory, Technology
 
     expand_borders = Objective(
         id="expand_borders",
@@ -44,10 +44,10 @@ from __future__ import annotations
 
 from collections import Counter
 
-from models.objective import Objective, ScoringConditionType
-from models.planet import Planet
-from models.state import GameState
-from models.technology import TechCategory, Technology
+from ti4_rules_engine.models.objective import Objective, ScoringConditionType
+from ti4_rules_engine.models.planet import Planet
+from ti4_rules_engine.models.state import GameState
+from ti4_rules_engine.models.technology import TechCategory, Technology
 
 
 def can_score_objective(

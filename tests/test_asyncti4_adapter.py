@@ -5,8 +5,8 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from adapters.asyncti4 import AsyncTI4GameData, AsyncTI4Player, from_asyncti4
-from models.state import GamePhase, GameState
+from ti4_rules_engine.adapters.asyncti4 import AsyncTI4GameData, AsyncTI4Player, from_asyncti4
+from ti4_rules_engine.models.state import GamePhase, GameState
 
 # ---------------------------------------------------------------------------
 # Minimal sample data matching the actual AsyncTI4 JSON structure

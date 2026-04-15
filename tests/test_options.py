@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from engine.options import (
+from ti4_rules_engine.engine.options import (
     PlayerAction,
     PlayerOptions,
     PublicPlayerInfo,
@@ -12,9 +12,9 @@ from engine.options import (
     get_player_options,
     get_public_player_info,
 )
-from models.objective import Objective, ObjectiveType, ScoringCondition, ScoringConditionType
-from models.planet import Planet
-from models.state import AgendaPhaseStep, GamePhase, GameState, StatusPhaseStep
+from ti4_rules_engine.models.objective import Objective, ObjectiveType, ScoringCondition, ScoringConditionType
+from ti4_rules_engine.models.planet import Planet
+from ti4_rules_engine.models.state import AgendaPhaseStep, GamePhase, GameState, StatusPhaseStep
 
 # ---------------------------------------------------------------------------
 # Strategy Phase
@@ -419,7 +419,7 @@ class TestGetAllOpponentsPublicInfo:
             get_all_opponents_public_info(game_state, "player_999")
 
     def test_two_player_game_single_opponent(self, game_state: GameState) -> None:
-        from models.state import TurnOrder
+        from ti4_rules_engine.models.state import TurnOrder
 
         game_state.phase = GamePhase.ACTION
         game_state.turn_order = TurnOrder(speaker_id="player_1", order=["player_1", "player_2"])

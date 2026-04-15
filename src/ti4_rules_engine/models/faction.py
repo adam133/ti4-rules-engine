@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
-from models.technology import Technology
-from models.unit import Unit
+from ti4_rules_engine.models.technology import Technology
+from ti4_rules_engine.models.unit import Unit
 
 
 class FactionAbility(BaseModel):

@@ -14,7 +14,7 @@ from __future__ import annotations
 import structlog
 from transitions import Machine
 
-from models.state import (
+from ti4_rules_engine.models.state import (
     AGENDA_PHASE_STEPS,
     STATUS_PHASE_STEPS,
     AgendaPhaseStep,

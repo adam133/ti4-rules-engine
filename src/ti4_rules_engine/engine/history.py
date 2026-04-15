@@ -23,7 +23,7 @@ from typing import Any
 
 import structlog
 
-from models.state import GameState
+from ti4_rules_engine.models.state import GameState
 
 logger = structlog.get_logger(__name__)
 

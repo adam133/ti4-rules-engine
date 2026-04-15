@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from engine.combat import CombatGroup, CombatUnit, simulate_combat
-from models.unit import Unit, UnitType
+from ti4_rules_engine.engine.combat import CombatGroup, CombatUnit, simulate_combat
+from ti4_rules_engine.models.unit import Unit, UnitType
 
 # ---------------------------------------------------------------------------
 # Fixtures – canonical unit stats

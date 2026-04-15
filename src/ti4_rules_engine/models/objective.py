@@ -12,7 +12,7 @@ Imperial Strategy Card's speaker ability.
 
 Example usage::
 
-    from models.objective import Objective, ObjectiveType, ScoringCondition, ScoringConditionType
+    from ti4_rules_engine.models.objective import Objective, ObjectiveType, ScoringCondition, ScoringConditionType
 
     obj = Objective(
         id="expand_borders",
@@ -33,7 +33,7 @@ from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
-from models.planet import PlanetTrait
+from ti4_rules_engine.models.planet import PlanetTrait
 
 
 class ObjectiveType(StrEnum):

@@ -5,8 +5,8 @@ Provides the ``ComponentRegistry`` (searchable component database) and
 the ``EffectRegistry`` (modifier/effect query system).
 """
 
-from registry.component_registry import ComponentRegistry
-from registry.effect_registry import Effect, EffectRegistry, TriggerType
+from ti4_rules_engine.registry.component_registry import ComponentRegistry
+from ti4_rules_engine.registry.effect_registry import Effect, EffectRegistry, TriggerType
 
 __all__ = [
     "ComponentRegistry",

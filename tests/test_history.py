@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from engine.history import GameHistory
-from models.state import GamePhase, GameState
+from ti4_rules_engine.engine.history import GameHistory
+from ti4_rules_engine.models.state import GamePhase, GameState
 
 
 class TestGameHistoryCheckpoint:
