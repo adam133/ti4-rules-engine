@@ -8,6 +8,7 @@ from ti4_rules_engine.scripts.analyze_game import (
     _get_planet_ri,
     _get_reach_info,
     _get_tactical_reach,
+    _is_hyperlane_tile_id,
     get_adjacent_positions,
     get_reachable_systems,
 )
@@ -1296,3 +1297,135 @@ class TestCombatUnitStats:
         assert len(_COMBAT_UNITS) >= 8  # at least the standard ship types
         assert "cv" in _COMBAT_UNITS
         assert "ws" in _COMBAT_UNITS
+
+
+# ---------------------------------------------------------------------------
+# Hyperlane tile detection and movement handling
+# ---------------------------------------------------------------------------
+
+
+class TestIsHyperlaneTileId:
+    """Tests for the _is_hyperlane_tile_id helper."""
+
+    def test_numbered_hyperlane_a_variant(self) -> None:
+        assert _is_hyperlane_tile_id("83a") is True
+
+    def test_numbered_hyperlane_b_variant(self) -> None:
+        assert _is_hyperlane_tile_id("83b") is True
+
+    def test_numbered_hyperlane_with_rotation(self) -> None:
+        assert _is_hyperlane_tile_id("83a60") is True
+        assert _is_hyperlane_tile_id("84b120") is True
+        assert _is_hyperlane_tile_id("91a300") is True
+
+    def test_all_numbered_hyperlane_bases(self) -> None:
+        for n in range(83, 92):
+            for v in ("a", "b"):
+                assert _is_hyperlane_tile_id(f"{n}{v}") is True, (
+                    f"{n}{v} should be identified as hyperlane"
+                )
+
+    def test_hl_prefix_hyperlane(self) -> None:
+        assert _is_hyperlane_tile_id("hl_4squeeze_0") is True
+        assert _is_hyperlane_tile_id("hl_bball_1") is True
+        assert _is_hyperlane_tile_id("hl_crossed_3") is True
+        assert _is_hyperlane_tile_id("hl_frost_5") is True
+
+    def test_normal_tile_not_hyperlane(self) -> None:
+        assert _is_hyperlane_tile_id("1") is False
+        assert _is_hyperlane_tile_id("42") is False  # nebula
+        assert _is_hyperlane_tile_id("43") is False  # supernova
+        assert _is_hyperlane_tile_id("82a") is False  # Mallice (not a hyperlane)
+
+    def test_empty_string_not_hyperlane(self) -> None:
+        assert _is_hyperlane_tile_id("") is False
+
+
+class TestHyperlaneBuildMovementContext:
+    """Hyperlane tiles are flagged in the tile_type_map."""
+
+    _ALL_POSITIONS = (
+        ["000"]
+        + [f"10{i}" for i in range(1, 7)]
+        + [f"2{i:02d}" for i in range(1, 13)]
+    )
+
+    def test_hyperlane_tile_flagged_in_type_map(self) -> None:
+        tile_positions = {pos: "1" for pos in self._ALL_POSITIONS}
+        tile_positions["102"] = "83a"  # hyperlane tile at 102
+        tile_type_map, _ = _build_movement_context(tile_positions)
+        assert tile_type_map.get("102", {}).get("hyperlane") is True
+
+    def test_normal_tile_not_flagged_as_hyperlane(self) -> None:
+        tile_positions = {pos: "1" for pos in self._ALL_POSITIONS}
+        tile_type_map, _ = _build_movement_context(tile_positions)
+        for pos in self._ALL_POSITIONS:
+            assert not tile_type_map.get(pos, {}).get("hyperlane"), (
+                f"Normal tile {pos} should not have hyperlane flag"
+            )
+
+    def test_hl_prefix_tile_flagged_in_type_map(self) -> None:
+        tile_positions = {pos: "1" for pos in self._ALL_POSITIONS}
+        tile_positions["201"] = "hl_crossed_0"
+        tile_type_map, _ = _build_movement_context(tile_positions)
+        assert tile_type_map.get("201", {}).get("hyperlane") is True
+
+
+class TestHyperlaneBFS:
+    """Hyperlane tiles are excluded as destinations but traversable in BFS."""
+
+    _ALL_POSITIONS = (
+        ["000"]
+        + [f"10{i}" for i in range(1, 7)]
+        + [f"2{i:02d}" for i in range(1, 13)]
+    )
+    _OPEN_MAP: dict = {pos: _make_tile_data() for pos in _ALL_POSITIONS}
+
+    def _tile_positions(self, overrides: dict[str, str]) -> dict[str, str]:
+        base = {pos: "1" for pos in self._ALL_POSITIONS}
+        base.update(overrides)
+        return base
+
+    def test_hyperlane_tile_not_in_reachable_set(self) -> None:
+        """Ships cannot stop on hyperlane tiles."""
+        tile_positions = self._tile_positions({"102": "83a"})
+        tile_type_map, wha = _build_movement_context(tile_positions)
+        result = get_reachable_systems(
+            "101", 3, self._OPEN_MAP, "red",
+            tile_type_map=tile_type_map, wormhole_adjacency=wha,
+        )
+        assert "102" not in result
+
+    def test_tiles_beyond_hyperlane_are_reachable(self) -> None:
+        """Tiles on the far side of a hyperlane are reachable (pass-through at 0 cost)."""
+        # Place hyperlane at 102 (between 101 and 202/203/204)
+        # With fleet_move=1 from 101:
+        #   101 → 102 (hyperlane, cost 0) → 202/203/204 (cost 1 from 102)
+        # So 202, 203, 204 should be reachable with move 1.
+        tile_positions = self._tile_positions({"102": "83a"})
+        tile_type_map, wha = _build_movement_context(tile_positions)
+        result = get_reachable_systems(
+            "101", 1, self._OPEN_MAP, "red",
+            tile_type_map=tile_type_map, wormhole_adjacency=wha,
+        )
+        # 202, 203, 204 are adjacent to 102 and should be reachable via hyperlane
+        assert "202" in result or "203" in result or "204" in result
+
+    def test_hyperlane_cc_check_bypassed(self) -> None:
+        """Hyperlane tiles cannot have CCs; the CC check must not block transit."""
+        tile_positions = self._tile_positions({"102": "83a"})
+        tile_type_map, wha = _build_movement_context(tile_positions)
+        # Pretend the hyperlane position has a CC (shouldn't happen in real games
+        # but tests that our code doesn't break on it)
+        map_with_cc = {
+            **self._OPEN_MAP,
+            "102": {**_make_tile_data(), "ccs": ["red"]},
+        }
+        result = get_reachable_systems(
+            "101", 1, map_with_cc, "red",
+            tile_type_map=tile_type_map, wormhole_adjacency=wha,
+        )
+        # Even with "red" CC on the hyperlane tile, transit should still work
+        assert "102" not in result  # still not a valid destination
+        # tiles beyond 102 are reachable because hyperlane bypasses CC check
+        assert "202" in result or "203" in result or "204" in result

@@ -19,6 +19,7 @@ from __future__ import annotations
 import functools
 import json
 import pathlib
+import re
 import sys
 import urllib.request
 from collections import deque
@@ -156,6 +157,28 @@ _TILE_CATALOG: dict[str, dict[str, Any]] = {
     "116": {},
 }
 
+# ---------------------------------------------------------------------------
+# Hyperlane tile identification
+# ---------------------------------------------------------------------------
+# Hyperlane tiles are positioned on the map but are NOT real game systems.
+# Ships cannot stop on them; they only provide adjacency between adjacent tiles.
+# Tile IDs 83–91 (with "a"/"b" variant and optional rotation suffix) and IDs
+# starting with "hl_" are all hyperlane tiles, as defined in the AsyncTI4 bot's
+# hyperlanes.properties data file.
+
+_HYPERLANE_ID_RE = re.compile(r"^(83|84|85|86|87|88|89|90|91)[ab](\d+)?$|^hl_")
+
+
+def _is_hyperlane_tile_id(tile_id: str) -> bool:
+    """Return ``True`` if *tile_id* identifies a hyperlane tile.
+
+    Hyperlane tiles (IDs 83a–91b with optional rotation suffix and IDs
+    prefixed with ``hl_``) are transparent connectors on the board.  Ships
+    cannot land on them; they only create adjacency between the real game
+    tiles on either side.
+    """
+    return bool(_HYPERLANE_ID_RE.match(tile_id))
+
 
 def _build_movement_context(
     tile_positions: dict[str, str],
@@ -179,6 +202,8 @@ def _build_movement_context(
     tile_type_map:
         ``{pos: tile_info}`` where *tile_info* is the corresponding entry from
         :data:`_TILE_CATALOG` (or an empty dict for uncatalogued tiles).
+        Hyperlane tiles are marked with ``{"hyperlane": True}`` so that the BFS
+        can skip them as valid destinations while still traversing through them.
     wormhole_adjacency:
         ``{pos: frozenset[pos]}`` — positions mutually adjacent via matching
         wormhole types.
@@ -188,6 +213,9 @@ def _build_movement_context(
 
     for pos, tile_id in tile_positions.items():
         info = _TILE_CATALOG.get(tile_id, {})
+        if _is_hyperlane_tile_id(tile_id):
+            # Merge the hyperlane flag without mutating _TILE_CATALOG entries
+            info = {**info, "hyperlane": True}
         tile_type_map[pos] = info
         for wh in info.get("wormholes", []):
             wormhole_groups.setdefault(wh, []).append(pos)
@@ -710,6 +738,11 @@ def _bfs(
     :func:`_get_reach_info`.  When *ignore_gravity_rift_bonus* is ``True``
     gravity-rift tiles are treated as normal tiles (cost 1 to enter) so that a
     second BFS run can identify destinations only reachable via the rift bonus.
+
+    Hyperlane tiles (identified via ``tile_type_map`` entries with
+    ``"hyperlane": True``) are transparent connectors: ships pass through them
+    at zero movement cost but cannot stop on them.  They are excluded from the
+    returned ``best_remaining`` dict.
     """
     if fleet_move <= 0:
         return {}
@@ -733,22 +766,29 @@ def _bfs(
                 continue
             tile_data = tile_unit_data[adj_pos]
 
-            if faction in tile_data.get("ccs", []):
-                continue
-
             if tile_type_map is not None:
                 info = tile_type_map.get(adj_pos, {})
                 if info.get("supernova"):
                     continue
-                if info.get("asteroid") and not has_antimass_deflectors:
+                if info.get("hyperlane"):
+                    # Hyperlane tiles are transparent connectors: ships pass
+                    # through at zero movement cost and cannot stop there.
+                    new_remaining = remaining
+                elif info.get("asteroid") and not has_antimass_deflectors:
                     continue
-                if info.get("gravity_rift") and not ignore_gravity_rift_bonus:
-                    new_remaining = remaining  # net cost 0 (−1 + rift bonus +1)
-                elif info.get("nebula"):
-                    new_remaining = 0
                 else:
-                    new_remaining = remaining - 1
+                    # Only real game tiles respect the CC-lock rule.
+                    if faction in tile_data.get("ccs", []):
+                        continue
+                    if info.get("gravity_rift") and not ignore_gravity_rift_bonus:
+                        new_remaining = remaining  # net cost 0 (−1 + rift bonus +1)
+                    elif info.get("nebula"):
+                        new_remaining = 0
+                    else:
+                        new_remaining = remaining - 1
             else:
+                if faction in tile_data.get("ccs", []):
+                    continue
                 if tile_data.get("anomaly", False):
                     continue
                 new_remaining = remaining - 1
@@ -757,6 +797,12 @@ def _bfs(
                 best_remaining[adj_pos] = new_remaining
                 if new_remaining > 0:
                     queue.append((adj_pos, new_remaining))
+
+    # Remove hyperlane tile positions from results: ships cannot stop on them.
+    if tile_type_map is not None:
+        for pos in list(best_remaining):
+            if pos != starting_pos and tile_type_map.get(pos, {}).get("hyperlane"):
+                del best_remaining[pos]
 
     return best_remaining
 
@@ -1131,7 +1177,9 @@ def fetch_game_json(game_number: str) -> dict:
 
 def print_game_summary(state: GameState) -> None:
     """Print a human-readable summary of the game state."""
-    obj_data = fetch_objective_data()
+    # Merge bundled objective data with API-provided data (API takes precedence,
+    # so expansion/custom objectives not in objectives.json are still named).
+    obj_data = {**fetch_objective_data(), **state.extra.get("objective_data", {})}
 
     print()
     print("=" * 60)
@@ -1198,7 +1246,8 @@ def print_player_summary(state: GameState, player_options_map: dict) -> None:
     tech_names = fetch_tech_names()
     action_techs = fetch_action_tech_names()
     leader_registry = fetch_leader_data()
-    obj_data = fetch_objective_data()
+    # Merge bundled objective data with API-provided data (API takes precedence).
+    obj_data = {**fetch_objective_data(), **state.extra.get("objective_data", {})}
     tile_unit_data: dict[str, Any] = state.extra.get("tile_unit_data", {})
     planet_ri = _get_planet_ri(tile_unit_data)
     player_leaders: dict[str, list[dict[str, Any]]] = state.extra.get("player_leaders", {})
@@ -1296,15 +1345,18 @@ def print_player_summary(state: GameState, player_options_map: dict) -> None:
                     status = "exhausted"
                 else:
                     status = "READY"
-                # Show the ability timing window if available in our data
-                timing = ""
-                if ltype == "agent":
-                    rec = leader_registry.get(lid)
-                    if rec:
-                        window = rec.get("abilityWindow", "")
-                        if window:
-                            timing = f"  [{window}]"
-                print(f"      {lid} ({ltype_cap}): {status}{timing}")
+                # Show the actual leader name, title, and ability window
+                rec = leader_registry.get(lid)
+                if rec:
+                    name = rec.get("name", lid)
+                    title = rec.get("title", "")
+                    window = rec.get("abilityWindow", "")
+                    display_name = f"{name} — {title}" if title else name
+                    timing = f"  [{window}]" if window else ""
+                else:
+                    display_name = lid
+                    timing = ""
+                print(f"      {display_name} ({ltype_cap}): {status}{timing}")
 
         if opts:
             actions = [a.value for a in opts.available_actions]
@@ -1337,7 +1389,9 @@ def print_player_summary(state: GameState, player_options_map: dict) -> None:
                         rec = leader_registry.get(lid)
                         if rec and rec.get("abilityWindow", "").startswith("ACTION:"):
                             name = rec.get("name", lid)
-                            component_sources.append(f"agent: {name} ({lid}) (READY)")
+                            title = rec.get("title", "")
+                            display = f"{name} — {title}" if title else name
+                            component_sources.append(f"agent: {display} (READY)")
 
                 if component_sources:
                     print("    Public component actions:")
