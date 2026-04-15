@@ -679,6 +679,8 @@ _TRANSPORTED_UNITS = frozenset({"ff", "gf", "mf"})  # fighter, ground force, mec
 _GROUND_FORCE_IDS = frozenset({"gf", "mf"})
 _FIGHTER_ENTITY_ID = "ff"
 _SPACE_DOCK_ENTITY_ID = "sd"
+_DEFAULT_SPACE_DOCK_FIGHTER_CAPACITY = 3
+_FIGHTER_II_MOVE_SPEED = 2
 
 # Unit registries built from data/units/baseUnits.json.
 # These are populated at first use via fetch_unit_data().
@@ -785,8 +787,12 @@ def _space_dock_fighter_capacity_in_tile(
 ) -> int:
     """Return fighter capacity in *tile_data* provided by the player's space docks."""
     cap_map = ship_capacity if ship_capacity is not None else _SHIP_CAPACITY
-    sd_capacity_raw = cap_map.get(_SPACE_DOCK_ENTITY_ID, 3)
-    sd_capacity = sd_capacity_raw if isinstance(sd_capacity_raw, int) and sd_capacity_raw > 0 else 3
+    sd_capacity_raw = cap_map.get(_SPACE_DOCK_ENTITY_ID, _DEFAULT_SPACE_DOCK_FIGHTER_CAPACITY)
+    sd_capacity = (
+        sd_capacity_raw
+        if isinstance(sd_capacity_raw, int) and sd_capacity_raw > 0
+        else _DEFAULT_SPACE_DOCK_FIGHTER_CAPACITY
+    )
     total_sd_count = 0
 
     # Space-area docks (rare but supported by the payload shape)
@@ -1221,7 +1227,7 @@ def _get_tactical_reach(
             fleet_units,
             faction_ship_move,
             fighter_excess_count=fighter_excess,
-            fighter_independent_move=2 if has_fighter_ii else 0,
+            fighter_independent_move=_FIGHTER_II_MOVE_SPEED if has_fighter_ii else 0,
         )
         if fleet_move <= 0:
             continue
