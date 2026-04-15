@@ -1329,6 +1329,13 @@ class TestObjectiveData:
         assert data["command_an_armada"]["type"] == "stage_2"
         assert data["command_an_armada"]["points"] == 2
 
+    def test_push_boundaries_alias_from_public_objectives(self) -> None:
+        from ti4_rules_engine.scripts.analyze_game import fetch_objective_data
+        data = fetch_objective_data()
+        assert "push_boundaries" in data
+        assert data["push_boundaries"]["name"] == "Push Boundaries"
+        assert "neighbors" in data["push_boundaries"]["description"]
+
     def test_format_objective_known_id(self) -> None:
         from ti4_rules_engine.scripts.analyze_game import _format_objective, fetch_objective_data
         data = fetch_objective_data()
@@ -1336,6 +1343,20 @@ class TestObjectiveData:
         assert "Expand Borders" in result
         assert "1VP" in result
         assert "6 planets" in result
+
+    def test_format_objective_uses_condition_text_field(self) -> None:
+        from ti4_rules_engine.scripts.analyze_game import _format_objective
+        result = _format_objective(
+            "x",
+            {
+                "x": {
+                    "name": "Objective X",
+                    "points": 1,
+                    "condition": "Do the thing.",
+                }
+            },
+        )
+        assert "Do the thing." in result
 
     def test_format_objective_unknown_id(self) -> None:
         from ti4_rules_engine.scripts.analyze_game import _format_objective
