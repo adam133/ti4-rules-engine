@@ -1,5 +1,8 @@
 """
-Fetch an AsyncTI4 game snapshot from the bot API and print a readable analysis.
+Core implementation for analyzing an AsyncTI4 game snapshot.
+
+For CLI usage, run ``ti4_rules_engine.scripts.analyze_game`` (or the
+installed ``ti4-analyze`` entrypoint), which wraps this module.
 
 Usage::
 
