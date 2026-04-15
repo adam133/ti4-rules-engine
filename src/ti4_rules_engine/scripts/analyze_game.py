@@ -43,6 +43,7 @@ _DATA_DIR = pathlib.Path(__file__).parent.parent / "data"
 _TECH_DATA_FILE = _DATA_DIR / "technologies.json"
 _OBJECTIVES_DATA_FILE = _DATA_DIR / "objectives.json"
 _LEADERS_DATA_FILE = _DATA_DIR / "leaders.json"
+_HYPERLANES_DATA_FILE = _DATA_DIR / "hyperlanes.json"
 _UNITS_DATA_DIR = _DATA_DIR / "units"
 
 # ---------------------------------------------------------------------------
@@ -184,8 +185,8 @@ def _build_movement_context(
     tile_positions: dict[str, str],
     *,
     creuss_in_game: bool = False,
-) -> tuple[dict[str, dict[str, Any]], dict[str, frozenset[str]]]:
-    """Build a per-position tile type map and wormhole adjacency sets.
+) -> tuple[dict[str, dict[str, Any]], dict[str, frozenset[str]], dict[str, frozenset[str]]]:
+    """Build a per-position tile type map, wormhole adjacency sets, and hyperlane adjacency.
 
     Parameters
     ----------
@@ -203,10 +204,15 @@ def _build_movement_context(
         ``{pos: tile_info}`` where *tile_info* is the corresponding entry from
         :data:`_TILE_CATALOG` (or an empty dict for uncatalogued tiles).
         Hyperlane tiles are marked with ``{"hyperlane": True}`` so that the BFS
-        can skip them as valid destinations while still traversing through them.
+        skips them as destinations.
     wormhole_adjacency:
         ``{pos: frozenset[pos]}`` — positions mutually adjacent via matching
         wormhole types.
+    hyperlane_adjacency:
+        ``{pos: frozenset[pos]}`` — non-hyperlane positions reachable from each
+        non-hyperlane position through adjacent hyperlane tile chains (following
+        edge-specific connection rules).  Ships treat these destinations as
+        ordinary 1-move neighbours.
     """
     tile_type_map: dict[str, dict[str, Any]] = {}
     wormhole_groups: dict[str, list[str]] = {}  # wormhole_type → [positions]
@@ -238,7 +244,115 @@ def _build_movement_context(
                     if other != pos:
                         wormhole_adjacency.setdefault(pos, set()).add(other)
 
-    return tile_type_map, {k: frozenset(v) for k, v in wormhole_adjacency.items()}
+    hyperlane_adjacency = _build_hyperlane_adjacency(tile_positions)
+
+    return (
+        tile_type_map,
+        {k: frozenset(v) for k, v in wormhole_adjacency.items()},
+        hyperlane_adjacency,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Hyperlane edge-specific adjacency
+# ---------------------------------------------------------------------------
+
+
+@functools.cache
+def _load_hyperlane_connections() -> dict[str, list[list[int]]]:
+    """Load the hyperlane edge-connectivity matrices from the bundled data file.
+
+    Returns a dict mapping tile ID (e.g. ``"83a"``, ``"86a240"``) to a 6×6
+    integer adjacency matrix where ``matrix[i][j] == 1`` means edge *i* of the
+    tile is connected to edge *j* through the hyperlane path.  The matrix is
+    always symmetric.  Falls back to an empty dict on any error.
+    """
+    try:
+        with _HYPERLANES_DATA_FILE.open(encoding="utf-8") as fh:
+            return json.load(fh)
+    except (OSError, json.JSONDecodeError) as exc:
+        print(
+            f"Warning: could not load hyperlane data from {_HYPERLANES_DATA_FILE}"
+            f" ({exc!r}); hyperlane adjacency will be empty.",
+            file=sys.stderr,
+        )
+        return {}
+
+
+def _build_hyperlane_adjacency(
+    tile_positions: dict[str, str],
+) -> dict[str, frozenset[str]]:
+    """Return a map of position → positions reachable via adjacent hyperlane chains.
+
+    For each non-hyperlane position *A*, walks along any adjacent hyperlane
+    tiles following their edge-specific connections (including chains of
+    consecutive hyperlane tiles) and collects all non-hyperlane positions that
+    can be reached.  Ships enter a hyperlane from the edge facing the source
+    tile; only the connected exit edges (as defined by the hyperlane's
+    connection matrix) lead to valid destinations.
+
+    Parameters
+    ----------
+    tile_positions:
+        Mapping of board position to tile ID for every tile currently on the map.
+
+    Returns
+    -------
+    A dict where each key is a non-hyperlane position that has at least one
+    hyperlane-connected destination, and the value is the ``frozenset`` of
+    reachable non-hyperlane positions (excluding the source itself).
+    """
+    connections = _load_hyperlane_connections()
+    existing = set(tile_positions)
+
+    def _traverse(hl_pos: str, entered_from: str, visited: frozenset[str]) -> set[str]:
+        """Recursively follow hyperlane connections from *hl_pos* entered via *entered_from*."""
+        if hl_pos in visited:
+            return set()
+        visited = visited | {hl_pos}
+
+        tile_id = tile_positions.get(hl_pos, "")
+        matrix = connections.get(tile_id)
+        if matrix is None:
+            return set()
+
+        neighbors = get_adjacent_positions(hl_pos)
+        try:
+            entry_edge = neighbors.index(entered_from)
+        except ValueError:
+            return set()
+
+        destinations: set[str] = set()
+        for exit_edge, connected in enumerate(matrix[entry_edge]):
+            if not connected:
+                continue
+            if exit_edge >= len(neighbors):
+                continue
+            exit_pos = neighbors[exit_edge]
+            if exit_pos not in existing:
+                continue
+            exit_tile_id = tile_positions.get(exit_pos, "")
+            if _is_hyperlane_tile_id(exit_tile_id):
+                destinations |= _traverse(exit_pos, hl_pos, visited)
+            else:
+                destinations.add(exit_pos)
+        return destinations
+
+    result: dict[str, set[str]] = {}
+    for pos, tile_id in tile_positions.items():
+        if _is_hyperlane_tile_id(tile_id):
+            continue
+        for hl_neighbor in get_adjacent_positions(pos):
+            if hl_neighbor not in existing:
+                continue
+            hl_tile_id = tile_positions.get(hl_neighbor, "")
+            if not _is_hyperlane_tile_id(hl_tile_id):
+                continue
+            dests = _traverse(hl_neighbor, pos, frozenset())
+            if dests:
+                result.setdefault(pos, set()).update(dests)
+
+    return {pos: frozenset(dests) for pos, dests in result.items()}
 
 
 # ---------------------------------------------------------------------------
@@ -728,6 +842,7 @@ def _bfs(
     faction: str,
     tile_type_map: dict[str, dict[str, Any]] | None = None,
     wormhole_adjacency: dict[str, frozenset[str]] | None = None,
+    hyperlane_adjacency: dict[str, frozenset[str]] | None = None,
     has_antimass_deflectors: bool = False,
     *,
     ignore_gravity_rift_bonus: bool = False,
@@ -740,9 +855,11 @@ def _bfs(
     second BFS run can identify destinations only reachable via the rift bonus.
 
     Hyperlane tiles (identified via ``tile_type_map`` entries with
-    ``"hyperlane": True``) are transparent connectors: ships pass through them
-    at zero movement cost but cannot stop on them.  They are excluded from the
-    returned ``best_remaining`` dict.
+    ``"hyperlane": True``) are never valid movement destinations; ships skip
+    them entirely and instead use ``hyperlane_adjacency`` — a pre-computed map
+    of positions reachable through adjacent hyperlane chains (following each
+    tile's edge-specific connection rules).  Hyperlane-connected positions are
+    treated as ordinary 1-move neighbours of the source tile.
     """
     if fleet_move <= 0:
         return {}
@@ -760,6 +877,10 @@ def _bfs(
             for wh_pos in wormhole_adjacency.get(pos, frozenset()):
                 if wh_pos not in neighbours:
                     neighbours.append(wh_pos)
+        if hyperlane_adjacency:
+            for hl_pos in hyperlane_adjacency.get(pos, frozenset()):
+                if hl_pos not in neighbours:
+                    neighbours.append(hl_pos)
 
         for adj_pos in neighbours:
             if adj_pos not in tile_unit_data:
@@ -771,9 +892,9 @@ def _bfs(
                 if info.get("supernova"):
                     continue
                 if info.get("hyperlane"):
-                    # Hyperlane tiles are transparent connectors: ships pass
-                    # through at zero movement cost and cannot stop there.
-                    new_remaining = remaining
+                    # Hyperlane tiles are never valid destinations; adjacency
+                    # through them is handled via hyperlane_adjacency above.
+                    continue
                 elif info.get("asteroid") and not has_antimass_deflectors:
                     continue
                 else:
@@ -798,12 +919,6 @@ def _bfs(
                 if new_remaining > 0:
                     queue.append((adj_pos, new_remaining))
 
-    # Remove hyperlane tile positions from results: ships cannot stop on them.
-    if tile_type_map is not None:
-        for pos in list(best_remaining):
-            if pos != starting_pos and tile_type_map.get(pos, {}).get("hyperlane"):
-                del best_remaining[pos]
-
     return best_remaining
 
 
@@ -814,6 +929,7 @@ def get_reachable_systems(
     faction: str,
     tile_type_map: dict[str, dict[str, Any]] | None = None,
     wormhole_adjacency: dict[str, frozenset[str]] | None = None,
+    hyperlane_adjacency: dict[str, frozenset[str]] | None = None,
     has_antimass_deflectors: bool = False,
 ) -> set[str]:
     """BFS from *starting_pos* returning all tile positions reachable by the fleet.
@@ -833,6 +949,10 @@ def get_reachable_systems(
 
     * When *wormhole_adjacency* is provided, tiles sharing a wormhole type are
       treated as mutually adjacent in addition to hex-grid neighbours.
+    * When *hyperlane_adjacency* is provided, positions connected through
+      hyperlane chains are treated as 1-move neighbours (following each
+      hyperlane tile's edge-specific connection rules).  Hyperlane tiles
+      themselves are never included as valid destinations.
     * Without *tile_type_map*, the legacy ``anomaly: bool`` field from
       *tile_unit_data* is used and all anomalies are treated as impassable.
     * The starting position itself is not included in the result.
@@ -848,6 +968,7 @@ def get_reachable_systems(
         faction,
         tile_type_map=tile_type_map,
         wormhole_adjacency=wormhole_adjacency,
+        hyperlane_adjacency=hyperlane_adjacency,
         has_antimass_deflectors=has_antimass_deflectors,
     )
     return {pos for pos in best if pos != starting_pos}
@@ -860,6 +981,7 @@ def _get_reach_info(
     faction: str,
     tile_type_map: dict[str, dict[str, Any]] | None = None,
     wormhole_adjacency: dict[str, frozenset[str]] | None = None,
+    hyperlane_adjacency: dict[str, frozenset[str]] | None = None,
     has_antimass_deflectors: bool = False,
 ) -> dict[str, dict[str, Any]]:
     """Return movement details for each reachable tile.
@@ -879,6 +1001,7 @@ def _get_reach_info(
         faction=faction,
         tile_type_map=tile_type_map,
         wormhole_adjacency=wormhole_adjacency,
+        hyperlane_adjacency=hyperlane_adjacency,
         has_antimass_deflectors=has_antimass_deflectors,
     )
     best_with = _bfs(starting_pos, fleet_move, ignore_gravity_rift_bonus=False, **bfs_kwargs)
@@ -954,13 +1077,14 @@ def _get_tactical_reach(
     tile_positions: dict[str, str] = state.extra.get("tile_positions", {})
     tile_type_map: dict[str, dict[str, Any]] | None = None
     wormhole_adjacency: dict[str, frozenset[str]] | None = None
+    hyperlane_adjacency: dict[str, frozenset[str]] | None = None
     if tile_positions:
         # Detect if the Ghosts of Creuss are playing — their faction ability
         # (Quantum Entanglement) makes all alpha and beta wormholes adjacent.
         creuss_in_game = any(
             p.faction_id == "ghost" for p in state.players.values()
         )
-        tile_type_map, wormhole_adjacency = _build_movement_context(
+        tile_type_map, wormhole_adjacency, hyperlane_adjacency = _build_movement_context(
             tile_positions, creuss_in_game=creuss_in_game
         )
 
@@ -994,6 +1118,7 @@ def _get_tactical_reach(
             faction,
             tile_type_map=tile_type_map,
             wormhole_adjacency=wormhole_adjacency,
+            hyperlane_adjacency=hyperlane_adjacency,
             has_antimass_deflectors=has_amd,
         )
 
@@ -1345,14 +1470,21 @@ def print_player_summary(state: GameState, player_options_map: dict) -> None:
                     status = "exhausted"
                 else:
                     status = "READY"
-                # Show the actual leader name, title, and ability window
+                # Show the actual leader name and ability text
                 rec = leader_registry.get(lid)
                 if rec:
                     name = rec.get("name", lid)
-                    title = rec.get("title", "")
+                    ability_text = rec.get("abilityText", "")
                     window = rec.get("abilityWindow", "")
-                    display_name = f"{name} — {title}" if title else name
-                    timing = f"  [{window}]" if window else ""
+                    if ability_text:
+                        display_name = name
+                        timing = f"  [{window}] {ability_text}" if window else f"  {ability_text}"
+                    elif window:
+                        display_name = name
+                        timing = f"  [{window}]"
+                    else:
+                        display_name = name
+                        timing = ""
                 else:
                     display_name = lid
                     timing = ""
@@ -1389,9 +1521,7 @@ def print_player_summary(state: GameState, player_options_map: dict) -> None:
                         rec = leader_registry.get(lid)
                         if rec and rec.get("abilityWindow", "").startswith("ACTION:"):
                             name = rec.get("name", lid)
-                            title = rec.get("title", "")
-                            display = f"{name} — {title}" if title else name
-                            component_sources.append(f"agent: {display} (READY)")
+                            component_sources.append(f"agent: {name} (READY)")
 
                 if component_sources:
                     print("    Public component actions:")
