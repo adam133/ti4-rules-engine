@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pathlib
+import shutil
 import subprocess
 
 import pytest
@@ -29,7 +30,20 @@ def pytest_sessionstart(session: pytest.Session) -> None:
     if resources_dir.exists():
         return
 
-    subprocess.run(
+    if shutil.which("git") is None:
+        raise RuntimeError(
+            "AsyncTI4 submodule data is missing and git is not available to initialize it.\n"
+            "Install git first, then run: git submodule update --init --recursive "
+            "data/TI4_map_generator_bot"
+        )
+
+    if not (repo_root / ".git").exists():
+        raise RuntimeError(
+            "AsyncTI4 submodule data is missing and this checkout does not appear to be a git repository.\n"
+            "Run tests from a git clone with submodules initialized."
+        )
+
+    result = subprocess.run(
         [
             "git",
             "submodule",
@@ -39,10 +53,25 @@ def pytest_sessionstart(session: pytest.Session) -> None:
             "data/TI4_map_generator_bot",
         ],
         cwd=repo_root,
-        check=True,
+        check=False,
         capture_output=True,
         text=True,
+        timeout=300,
     )
+    if result.returncode != 0:
+        output_parts: list[str] = []
+        if result.stdout:
+            output_parts.append(f"stdout:\n{result.stdout}")
+        if result.stderr:
+            output_parts.append(f"stderr:\n{result.stderr}")
+        output_text = (
+            "\n".join(output_parts) if output_parts else "No output was produced by the command."
+        )
+        raise RuntimeError(
+            "Failed to initialize AsyncTI4 submodule for tests.\n"
+            "Try running: git submodule update --init --recursive data/TI4_map_generator_bot\n"
+            f"{output_text}"
+        )
 
 
 @pytest.fixture()
