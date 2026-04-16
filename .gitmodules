@@ -1,0 +1,3 @@
+[submodule "data/TI4_map_generator_bot"]
+	path = data/TI4_map_generator_bot
+	url = https://github.com/AsyncTI4/TI4_map_generator_bot.git

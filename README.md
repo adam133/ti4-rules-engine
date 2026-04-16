@@ -30,11 +30,16 @@ The command fetches the live game snapshot from the AsyncTI4 API and prints:
 > on PyPI.  Until then, clone the repo and use the local install instead:
 >
 > ```bash
-> git clone https://github.com/adam133/ti4-rules-engine
+> git clone --recurse-submodules https://github.com/adam133/ti4-rules-engine
 > cd ti4-rules-engine
 > uv tool install .
 > ti4-analyze pbd22295
 > ```
+>
+> **Development note:** this repository reads game data from a git submodule
+> (`data/TI4_map_generator_bot`), so local development requires cloning with
+> submodules (or running `git submodule update --init --recursive` in an
+> existing clone).
 
 ### What it shows
 
