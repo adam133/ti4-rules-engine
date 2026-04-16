@@ -312,9 +312,15 @@ def _resolve_strategy_card_set_label(
         return str(rec.get("name") or set_id) if rec else set_id
     if not strategy_card_id_map:
         return None
-    numeric_pairs = [
-        (int(key), strategy_card_id_map[key]) for key in strategy_card_id_map if key.isdigit()
-    ]
+    numeric_pairs: list[tuple[int, str]] = []
+    for key, card_id in strategy_card_id_map.items():
+        if not key.isdigit():
+            continue
+        try:
+            initiative = int(key)
+        except ValueError:
+            continue
+        numeric_pairs.append((initiative, card_id))
     ordered_ids = [card_id for _, card_id in sorted(numeric_pairs)]
     if not ordered_ids:
         return None
