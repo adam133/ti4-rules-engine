@@ -30,6 +30,4 @@ jobs:
         run: pip install .
 
       - name: Analyze game ${{ inputs.game_number }}
-        run: python src/ti4_rules_engine/scripts/analyze_game.py "${{ inputs.game_number }}"
-        env:
-          PYTHONPATH: ${{ github.workspace }}
+        run: ti4-analyze "${{ inputs.game_number }}"
