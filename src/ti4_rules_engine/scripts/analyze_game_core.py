@@ -40,26 +40,6 @@ from urllib.error import URLError
 
 from ti4_rules_engine.adapters.asyncti4 import from_asyncti4
 from ti4_rules_engine.engine.options import get_player_options
-
-# ---------------------------------------------------------------------------
-# Sub-module re-exports (preserve the legacy import surface)
-# ---------------------------------------------------------------------------
-
-from ti4_rules_engine.scripts._hex_grid import (  # noqa: F401
-    _make_tile_str,
-    get_adjacent_positions,
-)
-from ti4_rules_engine.scripts._tile_catalog import (  # noqa: F401
-    _HYPERLANE_ID_RE,
-    _TILE_CATALOG,
-    _is_hyperlane_tile_id,
-)
-from ti4_rules_engine.scripts._hyperlanes import (  # noqa: F401
-    _MIN_HYPERLANE_NEIGHBORS_FOR_FALLBACK,
-    _build_hyperlane_adjacency,
-    _build_movement_context,
-    _load_hyperlane_connections,
-)
 from ti4_rules_engine.scripts._data_loaders import (  # noqa: F401
     _ASYNCTI4_ATTACHMENTS_DATA_DIR,
     _ASYNCTI4_DATA_DIR,
@@ -127,6 +107,20 @@ from ti4_rules_engine.scripts._fleet_movement import (  # noqa: F401
     _summarise_units,
     get_reachable_systems,
 )
+
+# ---------------------------------------------------------------------------
+# Sub-module re-exports (preserve the legacy import surface)
+# ---------------------------------------------------------------------------
+from ti4_rules_engine.scripts._hex_grid import (  # noqa: F401
+    _make_tile_str,
+    get_adjacent_positions,
+)
+from ti4_rules_engine.scripts._hyperlanes import (  # noqa: F401
+    _MIN_HYPERLANE_NEIGHBORS_FOR_FALLBACK,
+    _build_hyperlane_adjacency,
+    _build_movement_context,
+    _load_hyperlane_connections,
+)
 from ti4_rules_engine.scripts._map_display import (  # noqa: F401
     _build_full_map_lines,
     _describe_attachment_effect,
@@ -139,13 +133,16 @@ from ti4_rules_engine.scripts._map_display import (  # noqa: F401
     _summarise_entity_list,
     _tile_position_sort_key,
 )
+from ti4_rules_engine.scripts._tile_catalog import (  # noqa: F401
+    _HYPERLANE_ID_RE,
+    _TILE_CATALOG,
+    _is_hyperlane_tile_id,
+)
 
 if TYPE_CHECKING:
     from ti4_rules_engine.models.state import GameState
 
-WEB_DATA_URL_TEMPLATE = (
-    "https://bot.asyncti4.com/api/public/game/{game}/web-data"
-)
+WEB_DATA_URL_TEMPLATE = "https://bot.asyncti4.com/api/public/game/{game}/web-data"
 
 _STRATEGY_CARD_DATA_BY_INITIATIVE: dict[int, dict[str, str]] = {
     1: {
@@ -166,7 +163,9 @@ _STRATEGY_CARD_DATA_BY_INITIATIVE: dict[int, dict[str, str]] = {
     4: {
         "name": "Construction",
         "primary": "Place 1 space dock and 1 PDS on planets you control.",
-        "secondary": "Spend 1 strategy token to place either 1 space dock or 1 PDS on a planet you control.",
+        "secondary": (
+            "Spend 1 strategy token to place either 1 space dock or 1 PDS on a planet you control."
+        ),
     },
     5: {
         "name": "Trade",
@@ -185,10 +184,14 @@ _STRATEGY_CARD_DATA_BY_INITIATIVE: dict[int, dict[str, str]] = {
     },
     8: {
         "name": "Imperial",
-        "primary": "Score 1 public objective if possible; if you control Mecatol Rex, gain 1 victory point.",
+        "primary": (
+            "Score 1 public objective if possible; if you control Mecatol Rex, "
+            "gain 1 victory point."
+        ),
         "secondary": "Spend 1 strategy token to draw 1 secret objective.",
     },
 }
+_UNKNOWN_INITIATIVE_SORT_KEY = 99
 
 # ---------------------------------------------------------------------------
 # Output helpers
@@ -211,17 +214,19 @@ def fetch_game_json(game_number: str) -> dict:
 def _parse_strategy_card_initiative(card_id: str) -> int | None:
     """Extract initiative from strategy-card IDs such as '3' or 'pok3politics'."""
     if card_id.isdigit():
-        return int(card_id)
-    m = re.search(r"(\d+)", card_id)
-    if not m:
+        initiative = int(card_id)
+        return initiative if 1 <= initiative <= 8 else None
+    match = re.search(r"(\d+)", card_id)
+    if not match:
         return None
-    return int(m.group(1))
+    initiative = int(match.group(1))
+    return initiative if 1 <= initiative <= 8 else None
 
 
 def _strategy_card_details(card_id: str) -> dict[str, Any]:
     """Return display metadata for a strategy card ID."""
     initiative = _parse_strategy_card_initiative(card_id)
-    card = _STRATEGY_CARD_DATA_BY_INITIATIVE.get(initiative or -1, {})
+    card = _STRATEGY_CARD_DATA_BY_INITIATIVE.get(initiative, {})
     return {
         "initiative": initiative,
         "name": card.get("name", card_id),
@@ -432,7 +437,10 @@ def print_player_summary(state: GameState, player_options_map: dict) -> None:
         if player.strategy_card_ids:
             sorted_cards = sorted(
                 player.strategy_card_ids,
-                key=lambda cid: (_parse_strategy_card_initiative(cid) or 99, cid),
+                key=lambda cid: (
+                    _parse_strategy_card_initiative(cid) or _UNKNOWN_INITIATIVE_SORT_KEY,
+                    cid,
+                ),
             )
             print("    Strategy cards:")
             for card_id in sorted_cards:
@@ -452,9 +460,7 @@ def print_player_summary(state: GameState, player_options_map: dict) -> None:
         # --- Unscored public objectives + eligibility ---
         if state.public_objectives:
             scored_set = set(player.scored_objectives)
-            unscored_public = [
-                oid for oid in state.public_objectives if oid not in scored_set
-            ]
+            unscored_public = [oid for oid in state.public_objectives if oid not in scored_set]
             if unscored_public:
                 print("    Unscored public objectives:")
                 for obj_id in unscored_public:
@@ -510,8 +516,7 @@ def print_player_summary(state: GameState, player_options_map: dict) -> None:
 
                 # Technologies with ACTION timing
                 action_tech_ids = [
-                    t for t in (player.researched_technologies or [])
-                    if t in action_techs
+                    t for t in (player.researched_technologies or []) if t in action_techs
                 ]
                 for t in action_tech_ids:
                     component_sources.append(f"tech: {action_techs[t]}")
@@ -551,12 +556,12 @@ def print_player_summary(state: GameState, player_options_map: dict) -> None:
                         planet_str = ", ".join(planets) if planets else "(empty space)"
                         defenders = dest_data.get("defenders", {})
                         defender_strs = [
-                            f"{fac}: {', '.join(units)}"
-                            for fac, units in sorted(defenders.items())
+                            f"{fac}: {', '.join(units)}" for fac, units in sorted(defenders.items())
                         ]
                         def_str = (
                             "  [defenders: " + "; ".join(defender_strs) + "]"
-                            if defender_strs else ""
+                            if defender_strs
+                            else ""
                         )
                         print(f"      {dest_pos} — {planet_str}{def_str}")
 
@@ -620,9 +625,7 @@ def main() -> None:
     raw = fetch_game_json(game_number)
     state = from_asyncti4(raw)
 
-    player_options = {
-        pid: get_player_options(state, pid) for pid in state.players
-    }
+    player_options = {pid: get_player_options(state, pid) for pid in state.players}
 
     print_game_summary(state)
     print_player_summary(state, player_options)

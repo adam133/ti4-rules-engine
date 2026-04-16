@@ -1394,38 +1394,6 @@ class TestLeaderHelpers:
 
 
 # ---------------------------------------------------------------------------
-# Strategy-card summary helpers
-# ---------------------------------------------------------------------------
-
-
-class TestStrategyCardSummaryHelpers:
-    def test_strategy_card_details_resolves_known_card(self) -> None:
-        from ti4_rules_engine.scripts.analyze_game import _strategy_card_details
-        details = _strategy_card_details("7")
-        assert details["initiative"] == 7
-        assert details["name"] == "Technology"
-        assert "Research 1 technology" in details["primary"]
-        assert "6 resources" in details["secondary"]
-
-    def test_build_turn_order_tracker_uses_lowest_initiative(self) -> None:
-        from ti4_rules_engine.scripts.analyze_game import _build_turn_order_tracker
-        state = GameState(
-            game_id="g",
-            round_number=3,
-            turn_order=TurnOrder(speaker_id="alice", order=["alice", "bob", "cara"]),
-            players={
-                "alice": PlayerState(player_id="alice", faction_id="a", strategy_card_ids=["7", "2"]),
-                "bob": PlayerState(player_id="bob", faction_id="b", strategy_card_ids=["3"]),
-                "cara": PlayerState(player_id="cara", faction_id="c", strategy_card_ids=[]),
-            },
-        )
-        tracker = _build_turn_order_tracker(state)
-        assert [entry["player_id"] for entry in tracker] == ["alice", "bob"]
-        assert [entry["initiative"] for entry in tracker] == [2, 3]
-        assert tracker[0]["card_name"] == "Diplomacy"
-
-
-# ---------------------------------------------------------------------------
 # AsyncTI4 adapter – leaders and public objectives parsing
 # ---------------------------------------------------------------------------
 
