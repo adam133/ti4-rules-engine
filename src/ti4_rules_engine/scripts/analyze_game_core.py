@@ -313,7 +313,7 @@ def _resolve_strategy_card_set_label(
     numeric_keys = [key for key in strategy_card_id_map if key.isdigit()]
     ordered_ids = [
         strategy_card_id_map[key]
-        for key in sorted(numeric_keys, key=lambda value: int(value))
+        for key in sorted(numeric_keys, key=lambda key: int(key))
     ]
     if not ordered_ids:
         return None
