@@ -56,7 +56,9 @@ def test_build_turn_order_tracker_uses_lowest_initiative() -> None:
     assert tracker[1]["is_speaker"] is False
 
 
-def test_build_turn_order_tracker_uses_strategy_card_id_map(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_build_turn_order_tracker_uses_strategy_card_id_map(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setattr(
         analyze_game_core,
         "fetch_strategy_card_data",
@@ -89,7 +91,11 @@ def test_build_turn_order_tracker_uses_strategy_card_id_map(monkeypatch: pytest.
 def test_print_game_summary_mentions_strategy_card_set(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    monkeypatch.setattr(analyze_game_core, "fetch_strategy_card_set_data", lambda: {"te": {"name": "TE"}})
+    monkeypatch.setattr(
+        analyze_game_core,
+        "fetch_strategy_card_set_data",
+        lambda: {"te": {"name": "TE"}},
+    )
     state = GameState(
         game_id="g",
         round_number=3,
