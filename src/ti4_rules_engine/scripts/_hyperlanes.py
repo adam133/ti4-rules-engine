@@ -5,7 +5,7 @@ on them but can traverse them to reach otherwise-non-adjacent tiles.  This modul
 provides:
 
 * :func:`_load_hyperlane_connections` — loads edge-connectivity matrices from the
-  bundled ``data/hyperlanes.json`` data file.
+  upstream ``data/hyperlanes.properties`` data file.
 * :func:`_build_hyperlane_adjacency` — walks the hyperlane chains on a given map
   and returns a ``{pos: frozenset[pos]}`` adjacency mapping.
 * :func:`_build_movement_context` — the top-level helper called by the tactical
@@ -16,7 +16,6 @@ provides:
 from __future__ import annotations
 
 import functools
-import json
 import pathlib
 import sys
 from typing import Any
@@ -27,8 +26,10 @@ from ti4_rules_engine.scripts._tile_catalog import (
     _is_hyperlane_tile_id,
 )
 
-_DATA_DIR = pathlib.Path(__file__).parent.parent / "data"
-_HYPERLANES_DATA_FILE = _DATA_DIR / "hyperlanes.json"
+_REPO_ROOT = pathlib.Path(__file__).resolve().parents[3]
+_ASYNCTI4_SUBMODULE_ROOT = _REPO_ROOT / "data" / "TI4_map_generator_bot"
+_DATA_DIR = _ASYNCTI4_SUBMODULE_ROOT / "src" / "main" / "resources" / "data"
+_HYPERLANES_DATA_FILE = _DATA_DIR / "hyperlanes.properties"
 
 # Entry-agnostic fallback is only enabled when a source has 2+ adjacent
 # hyperlane connectors (branch points), where rotation mismatches are most likely.
@@ -37,7 +38,7 @@ _MIN_HYPERLANE_NEIGHBORS_FOR_FALLBACK = 2
 
 @functools.cache
 def _load_hyperlane_connections() -> dict[str, list[list[int]]]:
-    """Load the hyperlane edge-connectivity matrices from the bundled data file.
+    """Load hyperlane edge-connectivity matrices from the upstream properties file.
 
     Returns a dict mapping tile ID (e.g. ``"83a"``, ``"86a240"``) to a 6×6
     integer adjacency matrix where ``matrix[i][j] == 1`` means edge *i* of the
@@ -45,9 +46,24 @@ def _load_hyperlane_connections() -> dict[str, list[list[int]]]:
     always symmetric.  Falls back to an empty dict on any error.
     """
     try:
+        connections: dict[str, list[list[int]]] = {}
         with _HYPERLANES_DATA_FILE.open(encoding="utf-8") as fh:
-            return json.load(fh)
-    except (OSError, json.JSONDecodeError) as exc:
+            for raw_line in fh:
+                line = raw_line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                tile_id, matrix_text = line.split("=", maxsplit=1)
+                matrix = [
+                    [int(value) for value in row.split(",")]
+                    for row in matrix_text.split(";")
+                ]
+                if len(matrix) != 6 or any(len(row) != 6 for row in matrix):
+                    raise ValueError(
+                        f"Invalid hyperlane matrix dimensions for {tile_id!r}: {matrix_text!r}"
+                    )
+                connections[tile_id] = matrix
+        return connections
+    except (OSError, ValueError) as exc:
         print(
             f"Warning: could not load hyperlane data from {_HYPERLANES_DATA_FILE}"
             f" ({exc!r}); hyperlane adjacency will be empty.",

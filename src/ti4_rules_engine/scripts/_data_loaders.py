@@ -30,18 +30,44 @@ from ti4_rules_engine.models.unit import Unit, UnitType
 # Data file paths
 # ---------------------------------------------------------------------------
 
-_DATA_DIR = pathlib.Path(__file__).parent.parent / "data"
-_TECH_DATA_FILE = _DATA_DIR / "technologies.json"
-_PUBLIC_OBJECTIVES_DATA_FILE = _DATA_DIR / "public_objectives.json"
-_LEADERS_DATA_FILE = _DATA_DIR / "leaders.json"
+_REPO_ROOT = pathlib.Path(__file__).resolve().parents[3]
+_ASYNCTI4_SUBMODULE_ROOT = _REPO_ROOT / "data" / "TI4_map_generator_bot"
+_ASYNCTI4_RESOURCES_DIR = _ASYNCTI4_SUBMODULE_ROOT / "src" / "main" / "resources"
+_DATA_DIR = _ASYNCTI4_RESOURCES_DIR / "data"
+_ASYNCTI4_DATA_DIR = _ASYNCTI4_RESOURCES_DIR
+_TECH_DATA_DIR = _DATA_DIR / "technologies"
+_PUBLIC_OBJECTIVES_DATA_DIR = _DATA_DIR / "public_objectives"
+_LEADERS_DATA_DIR = _DATA_DIR / "leaders"
 _UNITS_DATA_DIR = _DATA_DIR / "units"
-_ASYNCTI4_DATA_DIR = _DATA_DIR / "asyncti4"
-_ASYNCTI4_ATTACHMENTS_DATA_DIR = _ASYNCTI4_DATA_DIR / "attachments"
-_ASYNCTI4_PLANETS_DATA_DIR = _ASYNCTI4_DATA_DIR / "planets"
-_ASYNCTI4_SYSTEMS_DATA_DIR = _ASYNCTI4_DATA_DIR / "systems"
+_ASYNCTI4_ATTACHMENTS_DATA_DIR = _DATA_DIR / "attachments"
+_ASYNCTI4_PLANETS_DATA_DIR = _ASYNCTI4_RESOURCES_DIR / "planets"
+_ASYNCTI4_SYSTEMS_DATA_DIR = _ASYNCTI4_RESOURCES_DIR / "systems"
+_TECH_DATA_FILE = _TECH_DATA_DIR
+_PUBLIC_OBJECTIVES_DATA_FILE = _PUBLIC_OBJECTIVES_DATA_DIR
+_LEADERS_DATA_FILE = _LEADERS_DATA_DIR
 
 # Tech alias used by Fighter II upgrade detection
 _FIGHTER_II_TECH_ID = "ff2"
+
+
+def _load_json_records_from_dir(data_dir: pathlib.Path) -> list[dict[str, Any]]:
+    """Return dict records from all ``*.json`` files in *data_dir*."""
+    records: list[dict[str, Any]] = []
+    try:
+        files = sorted(data_dir.glob("*.json"))
+    except OSError:
+        return records
+    for path in files:
+        try:
+            with path.open(encoding="utf-8") as fh:
+                data = json.load(fh)
+        except (OSError, json.JSONDecodeError):
+            continue
+        if isinstance(data, list):
+            records.extend(item for item in data if isinstance(item, dict))
+        elif isinstance(data, dict):
+            records.append(data)
+    return records
 
 # ---------------------------------------------------------------------------
 # Technology loaders
@@ -53,7 +79,7 @@ def fetch_tech_names() -> dict[str, str]:
 
     Returns a dict mapping the short alias used in game exports (e.g. ``"amd"``)
     to the full display name (e.g. ``"Antimass Deflectors"``).  The data is
-    ported from the AsyncTI4 bot and stored in ``data/technologies.json``.
+    ported from the AsyncTI4 bot and stored in ``data/technologies/*.json``.
     Falls back to an empty dict if the file cannot be read.
     Results are cached after the first call.
     """
@@ -70,8 +96,7 @@ def _has_fighter_ii(researched_techs: list[str]) -> bool:
 def _load_fighter_ii_aliases_cached() -> frozenset[str]:
     """Return all technology aliases that represent Fighter II upgrades."""
     try:
-        with _TECH_DATA_FILE.open(encoding="utf-8") as fh:
-            techs: list[dict[str, Any]] = json.load(fh)
+        techs = _load_json_records_from_dir(_TECH_DATA_DIR)
         aliases = {
             t["alias"]
             for t in techs
@@ -92,8 +117,7 @@ def _load_fighter_ii_aliases_cached() -> frozenset[str]:
 def _load_tech_names_cached() -> dict[str, str]:
     """Cached implementation of :func:`fetch_tech_names`."""
     try:
-        with _TECH_DATA_FILE.open(encoding="utf-8") as fh:
-            techs: list[dict[str, Any]] = json.load(fh)
+        techs = _load_json_records_from_dir(_TECH_DATA_DIR)
         return {
             t["alias"]: t["name"]
             for t in techs
@@ -101,7 +125,7 @@ def _load_tech_names_cached() -> dict[str, str]:
         }
     except (OSError, json.JSONDecodeError, KeyError, TypeError) as exc:
         print(
-            f"Warning: could not load tech names from {_TECH_DATA_FILE} ({exc!r}); "
+            f"Warning: could not load tech names from {_TECH_DATA_DIR} ({exc!r}); "
             "showing raw tech aliases.",
             file=sys.stderr,
         )
@@ -111,7 +135,7 @@ def _load_tech_names_cached() -> dict[str, str]:
 def fetch_action_tech_names() -> dict[str, str]:
     """Return alias→name for technologies that have an ACTION-timing ability.
 
-    Parses ``data/technologies.json`` and returns entries whose ``text`` field
+    Parses ``data/technologies/*.json`` and returns entries whose ``text`` field
     contains ``"ACTION:"`` (case-sensitive), indicating the technology can be
     used as a component action.
     """
@@ -122,8 +146,7 @@ def fetch_action_tech_names() -> dict[str, str]:
 def _load_action_tech_names_cached() -> dict[str, str]:
     """Cached implementation of :func:`fetch_action_tech_names`."""
     try:
-        with _TECH_DATA_FILE.open(encoding="utf-8") as fh:
-            techs: list[dict[str, Any]] = json.load(fh)
+        techs = _load_json_records_from_dir(_TECH_DATA_DIR)
         return {
             t["alias"]: t["name"]
             for t in techs
@@ -145,7 +168,7 @@ def fetch_objective_data() -> dict[str, dict[str, Any]]:
     """Load full objective data from the bundled data file.
 
     Returns a dict mapping objective ID (e.g. ``"expand_borders"``) to the full
-    objective record. Data is loaded from ``data/public_objectives.json``
+    objective record. Data is loaded from ``data/public_objectives/*.json``
     (ported from the AsyncTI4 bot).
     Falls back to an empty dict if the file cannot be read.
     Results are cached after the first call.
@@ -158,8 +181,7 @@ def _load_objective_data_cached() -> dict[str, dict[str, Any]]:
     """Cached implementation of :func:`fetch_objective_data`."""
     objective_data: dict[str, dict[str, Any]] = {}
     try:
-        with _PUBLIC_OBJECTIVES_DATA_FILE.open(encoding="utf-8") as fh:
-            public_objectives: list[dict[str, Any]] = json.load(fh)
+        public_objectives = _load_json_records_from_dir(_PUBLIC_OBJECTIVES_DATA_DIR)
         for obj in public_objectives:
             if not isinstance(obj, dict):
                 continue
@@ -188,7 +210,7 @@ def _load_objective_data_cached() -> dict[str, dict[str, Any]]:
     except (OSError, json.JSONDecodeError, KeyError, TypeError) as exc:
         print(
             "Warning: could not load objective data from "
-            f"{_PUBLIC_OBJECTIVES_DATA_FILE} ({exc!r}); "
+            f"{_PUBLIC_OBJECTIVES_DATA_DIR} ({exc!r}); "
             "showing raw objective IDs.",
             file=sys.stderr,
         )
@@ -239,7 +261,7 @@ def _format_objective(obj_id: str, obj_data: dict[str, dict[str, Any]]) -> str:
 
 
 def fetch_leader_data() -> dict[str, dict[str, Any]]:
-    """Return a mapping of leader id → leader record from ``data/leaders.json``.
+    """Return a mapping of leader id → leader record from ``data/leaders/*.json``.
 
     Each record contains at minimum: ``id``, ``faction``, ``type``, ``name``,
     ``title``, ``abilityWindow``, and ``source``.
@@ -251,8 +273,7 @@ def fetch_leader_data() -> dict[str, dict[str, Any]]:
 def _load_leader_data_cached() -> dict[str, dict[str, Any]]:
     """Cached implementation of :func:`fetch_leader_data`."""
     try:
-        with _LEADERS_DATA_FILE.open(encoding="utf-8") as fh:
-            leaders: list[dict[str, Any]] = json.load(fh)
+        leaders = _load_json_records_from_dir(_LEADERS_DATA_DIR)
         return {
             entry["id"]: entry
             for entry in leaders
@@ -324,6 +345,8 @@ def _load_attachment_data_cached() -> dict[str, dict[str, Any]]:
                 for item in data:
                     if isinstance(item, dict) and "id" in item:
                         attachments[str(item["id"])] = item
+            elif isinstance(data, dict) and "id" in data:
+                attachments[str(data["id"])] = data
     except (OSError, json.JSONDecodeError, KeyError, TypeError):
         return {}
     return attachments
