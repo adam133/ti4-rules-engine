@@ -243,7 +243,6 @@ def _strategy_card_details_for_map(
 
     strategy_cards = fetch_strategy_card_data()
     by_id = strategy_cards.get(resolved_card_id) or strategy_cards.get(card_id)
-    card: dict[str, Any]
     if by_id:
         card = by_id
     else:

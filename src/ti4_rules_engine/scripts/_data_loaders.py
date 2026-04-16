@@ -63,7 +63,7 @@ def _load_json_records_from_dir(data_dir: pathlib.Path) -> list[dict[str, Any]]:
         try:
             with path.open(encoding="utf-8") as fh:
                 data = json.load(fh)
-        except OSError, json.JSONDecodeError:
+        except (OSError, json.JSONDecodeError):
             continue
         if isinstance(data, list):
             records.extend(item for item in data if isinstance(item, dict))
@@ -111,7 +111,7 @@ def _load_fighter_ii_aliases_cached() -> frozenset[str]:
         }
         aliases.add(_FIGHTER_II_TECH_ID)
         return frozenset(aliases)
-    except OSError, json.JSONDecodeError, KeyError, TypeError:
+    except (OSError, json.JSONDecodeError, KeyError, TypeError):
         return frozenset({_FIGHTER_II_TECH_ID})
 
 
@@ -157,7 +157,7 @@ def _load_action_tech_names_cached() -> dict[str, str]:
             and "name" in t
             and "ACTION:" in t.get("text", "")
         }
-    except OSError, json.JSONDecodeError, KeyError, TypeError:
+    except (OSError, json.JSONDecodeError, KeyError, TypeError):
         return {}
 
 
@@ -352,7 +352,7 @@ def _load_leader_data_cached() -> dict[str, dict[str, Any]]:
         return {
             entry["id"]: entry for entry in leaders if isinstance(entry, dict) and "id" in entry
         }
-    except OSError, json.JSONDecodeError, KeyError, TypeError:
+    except (OSError, json.JSONDecodeError, KeyError, TypeError):
         return {}
 
 
@@ -386,7 +386,7 @@ def _load_system_data_cached() -> dict[str, dict[str, Any]]:
                 data = json.load(fh)
             if isinstance(data, dict) and "id" in data:
                 systems[str(data["id"])] = data
-    except OSError, json.JSONDecodeError, KeyError, TypeError:
+    except (OSError, json.JSONDecodeError, KeyError, TypeError):
         return {}
     return systems
 
@@ -401,7 +401,7 @@ def _load_planet_data_cached() -> dict[str, dict[str, Any]]:
                 data = json.load(fh)
             if isinstance(data, dict) and "id" in data:
                 planets[str(data["id"])] = data
-    except OSError, json.JSONDecodeError, KeyError, TypeError:
+    except (OSError, json.JSONDecodeError, KeyError, TypeError):
         return {}
     return planets
 
@@ -420,7 +420,7 @@ def _load_attachment_data_cached() -> dict[str, dict[str, Any]]:
                         attachments[str(item["id"])] = item
             elif isinstance(data, dict) and "id" in data:
                 attachments[str(data["id"])] = data
-    except OSError, json.JSONDecodeError, KeyError, TypeError:
+    except (OSError, json.JSONDecodeError, KeyError, TypeError):
         return {}
     return attachments
 
@@ -510,7 +510,7 @@ def _load_unit_data_cached(faction: str | None = None) -> dict[str, Unit]:
             # has no "upgradesFromUnitId" field.
             if "upgradesFromUnitId" not in entry:
                 units[async_id] = model
-    except OSError, json.JSONDecodeError, KeyError, TypeError:
+    except (OSError, json.JSONDecodeError, KeyError, TypeError):
         pass
 
     # 2. Apply faction-specific overrides when requested.
@@ -530,7 +530,7 @@ def _load_unit_data_cached(faction: str | None = None) -> dict[str, Unit]:
                     continue
                 async_id = entry["asyncId"]
                 units[async_id] = model
-        except OSError, json.JSONDecodeError, KeyError, TypeError:
+        except (OSError, json.JSONDecodeError, KeyError, TypeError):
             pass
 
     # Add "cr" as an alias for "ca" (cruiser) – some AsyncTI4 exports use
