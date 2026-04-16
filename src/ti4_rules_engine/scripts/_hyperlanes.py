@@ -54,8 +54,7 @@ def _load_hyperlane_connections() -> dict[str, list[list[int]]]:
                     continue
                 tile_id, matrix_text = line.split("=", maxsplit=1)
                 matrix = [
-                    [int(value) for value in row.split(",")]
-                    for row in matrix_text.split(";")
+                    [int(value) for value in row.split(",")] for row in matrix_text.split(";")
                 ]
                 if len(matrix) != 6 or any(len(row) != 6 for row in matrix):
                     raise ValueError(
@@ -144,10 +143,7 @@ def _build_hyperlane_adjacency(
         for hl_neighbor in hl_neighbors:
             hl_tile_id = tile_positions.get(hl_neighbor, "")
             dests = _traverse(hl_neighbor, pos, frozenset())
-            if (
-                not dests
-                and len(hl_neighbors) >= _MIN_HYPERLANE_NEIGHBORS_FOR_FALLBACK
-            ):
+            if not dests and len(hl_neighbors) >= _MIN_HYPERLANE_NEIGHBORS_FOR_FALLBACK:
                 # Fallback for maps whose hyperlane tile rotation metadata does not
                 # align with this position ordering: try all possible entry rows on
                 # the first hyperlane tile, then continue strict traversal.
