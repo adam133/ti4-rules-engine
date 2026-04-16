@@ -100,7 +100,13 @@ def test_print_game_summary_mentions_strategy_card_set(
         game_id="g",
         round_number=3,
         turn_order=TurnOrder(speaker_id="alice", order=["alice"]),
-        players={"alice": PlayerState(player_id="alice", faction_id="a", strategy_card_ids=["4"])},
+        players={
+            "alice": PlayerState(
+                player_id="alice",
+                faction_id="a",
+                strategy_card_ids=["4"],
+            )
+        },
         extra={"strategy_card_set": "te"},
     )
 

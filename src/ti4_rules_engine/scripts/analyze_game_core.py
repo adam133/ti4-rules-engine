@@ -245,6 +245,8 @@ def _strategy_card_details_for_map(
     by_id = strategy_cards.get(resolved_card_id) or strategy_cards.get(card_id)
     if by_id:
         card = by_id
+    elif initiative is None:
+        card = {}
     else:
         card = _DEFAULT_STRATEGY_CARD_DATA_BY_INITIATIVE.get(initiative, {})
     return {

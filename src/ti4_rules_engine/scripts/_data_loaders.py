@@ -179,7 +179,12 @@ def fetch_strategy_card_set_data() -> dict[str, dict[str, Any]]:
 def _normalise_strategy_card_text(value: object) -> str:
     """Normalise AsyncTI4 strategy-card text payloads to one display string."""
     if isinstance(value, list):
-        return " ".join(str(part).strip() for part in value if str(part).strip())
+        text_parts: list[str] = []
+        for part in value:
+            text = str(part).strip()
+            if text:
+                text_parts.append(text)
+        return " ".join(text_parts)
     if isinstance(value, str):
         return value.strip()
     return ""
