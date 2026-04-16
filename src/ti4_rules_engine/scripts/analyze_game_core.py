@@ -251,7 +251,7 @@ def _strategy_card_details_for_map(
         card = _DEFAULT_STRATEGY_CARD_DATA_BY_INITIATIVE.get(initiative, {})
     return {
         "initiative": initiative,
-        "name": card.get("name", resolved_card_id),
+        "name": card.get("name", card_id),
         "primary": card.get("primary", "(ability text unavailable)"),
         "secondary": card.get("secondary", "(ability text unavailable)"),
     }
@@ -312,11 +312,10 @@ def _resolve_strategy_card_set_label(
         return str(rec.get("name") or set_id) if rec else set_id
     if not strategy_card_id_map:
         return None
-    numeric_keys = [key for key in strategy_card_id_map if key.isdigit()]
-    ordered_ids = [
-        strategy_card_id_map[key]
-        for key in sorted(numeric_keys, key=lambda key: int(key))
+    numeric_pairs = [
+        (int(key), strategy_card_id_map[key]) for key in strategy_card_id_map if key.isdigit()
     ]
+    ordered_ids = [card_id for _, card_id in sorted(numeric_pairs)]
     if not ordered_ids:
         return None
     for rec in set_records.values():

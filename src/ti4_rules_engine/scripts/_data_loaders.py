@@ -63,7 +63,7 @@ def _load_json_records_from_dir(data_dir: pathlib.Path) -> list[dict[str, Any]]:
         try:
             with path.open(encoding="utf-8") as fh:
                 data = json.load(fh)
-        except (OSError, json.JSONDecodeError):
+        except (OSError, json.JSONDecodeError, KeyError, TypeError):
             continue
         if isinstance(data, list):
             records.extend(item for item in data if isinstance(item, dict))
