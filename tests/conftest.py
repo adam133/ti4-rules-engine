@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import pathlib
+import subprocess
+
 import pytest
 
 from ti4_rules_engine.models.card import ActionCard, ActionCardType, StrategyCard
@@ -10,6 +13,36 @@ from ti4_rules_engine.models.planet import Planet, PlanetTrait, TechSkip
 from ti4_rules_engine.models.state import GamePhase, GameState, PlayerState, TurnOrder
 from ti4_rules_engine.models.technology import TechCategory, Technology
 from ti4_rules_engine.models.unit import Unit, UnitType
+
+
+def pytest_sessionstart(session: pytest.Session) -> None:
+    """Ensure AsyncTI4 submodule data is available for tests that load game data."""
+    repo_root = pathlib.Path(__file__).resolve().parents[1]
+    resources_dir = (
+        repo_root
+        / "data"
+        / "TI4_map_generator_bot"
+        / "src"
+        / "main"
+        / "resources"
+    )
+    if resources_dir.exists():
+        return
+
+    subprocess.run(
+        [
+            "git",
+            "submodule",
+            "update",
+            "--init",
+            "--recursive",
+            "data/TI4_map_generator_bot",
+        ],
+        cwd=repo_root,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
 
 
 @pytest.fixture()
