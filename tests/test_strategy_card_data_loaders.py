@@ -31,12 +31,17 @@ def test_fetch_strategy_card_data_falls_back_to_remote_set_file(
                 "name": "Leadership",
                 "primaryTexts": ["Gain 3 command tokens"],
                 "secondaryTexts": [
-                    "Spend any amount of influence to gain 1 command token for every 3 influence spent"
+                    "Spend any amount of influence to gain 1 command token "
+                    "for every 3 influence spent"
                 ],
             }
         ]
 
-    monkeypatch.setattr(_data_loaders, "_load_json_records_from_url", _fake_load_json_records_from_url)
+    monkeypatch.setattr(
+        _data_loaders,
+        "_load_json_records_from_url",
+        _fake_load_json_records_from_url,
+    )
 
     cards = _data_loaders.fetch_strategy_card_data()
     assert cards["pok1leadership"]["name"] == "Leadership"
