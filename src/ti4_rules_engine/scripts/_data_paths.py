@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import pathlib
 
-_SUBMODULE_RESOURCES_RELATIVE_PATH = pathlib.Path(
-    "data/TI4_map_generator_bot/src/main/resources"
+_SUBMODULE_RESOURCES_RELATIVE_PATHS = (
+    pathlib.Path("data/TI4_map_generator_bot/src/main/resources"),
+    pathlib.Path("ti4_rules_engine/data/TI4_map_generator_bot/src/main/resources"),
 )
 
 
@@ -24,17 +25,19 @@ def _locate_asyncti4_resources_dir() -> pathlib.Path:
     checked: list[pathlib.Path] = []
     seen: set[pathlib.Path] = set()
     for root in _iter_search_roots():
-        candidate = (root / _SUBMODULE_RESOURCES_RELATIVE_PATH).resolve()
-        if candidate in seen:
-            continue
-        seen.add(candidate)
-        checked.append(candidate)
-        if candidate.is_dir():
-            return candidate
+        for relative_path in _SUBMODULE_RESOURCES_RELATIVE_PATHS:
+            candidate = (root / relative_path).resolve()
+            if candidate in seen:
+                continue
+            seen.add(candidate)
+            checked.append(candidate)
+            if candidate.is_dir():
+                return candidate
     checked_paths = ", ".join(str(path) for path in checked)
     raise FileNotFoundError(
         "Required AsyncTI4 submodule resources directory was not found. "
-        "Expected path: data/TI4_map_generator_bot/src/main/resources. "
+        "Expected one of: data/TI4_map_generator_bot/src/main/resources, "
+        "ti4_rules_engine/data/TI4_map_generator_bot/src/main/resources. "
         f"Checked: {checked_paths}"
     )
 
