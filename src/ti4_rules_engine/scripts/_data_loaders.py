@@ -24,6 +24,7 @@ import pathlib
 import sys
 from typing import Any
 from urllib.error import URLError
+from urllib.parse import urlparse
 from urllib.request import urlopen
 
 from ti4_rules_engine.models.unit import Unit, UnitType
@@ -48,6 +49,13 @@ _STRATEGY_CARD_REMOTE_URL_TEMPLATE = (
     "https://raw.githubusercontent.com/AsyncTI4/TI4_map_generator_bot/master/"
     "src/main/resources/data/strategy_cards/{filename}"
 )
+_ALLOWED_REMOTE_DATA_URL_PREFIX = (
+    "https://raw.githubusercontent.com/AsyncTI4/TI4_map_generator_bot/master/"
+    "src/main/resources/data/"
+)
+# Keep PoK as a last-resort fallback because it is the default/common set and
+# includes the standard ``pok1``-``pok8`` cards shown in analyze summaries.
+_DEFAULT_STRATEGY_CARD_FALLBACK_FILE = "pok.json"
 _PUBLIC_OBJECTIVES_DATA_DIR = _DATA_DIR / "public_objectives"
 _LEADERS_DATA_DIR = _DATA_DIR / "leaders"
 _UNITS_DATA_DIR = _DATA_DIR / "units"
@@ -84,6 +92,13 @@ def _load_json_records_from_dir(data_dir: pathlib.Path) -> list[dict[str, Any]]:
 
 def _load_json_records_from_url(url: str) -> list[dict[str, Any]]:
     """Return dict records from a JSON payload at *url*."""
+    parsed = urlparse(url)
+    if (
+        parsed.scheme != "https"
+        or parsed.netloc != "raw.githubusercontent.com"
+        or not url.startswith(_ALLOWED_REMOTE_DATA_URL_PREFIX)
+    ):
+        return []
     try:
         with urlopen(url, timeout=30) as response:  # noqa: S310
             payload = json.load(response)
@@ -220,7 +235,7 @@ def _load_strategy_card_data_cached() -> dict[str, dict[str, Any]]:
     records = _load_json_records_from_dir(_STRATEGY_CARD_DATA_DIR)
     if not records:
         fallback_files = {f"{alias}.json" for alias in fetch_strategy_card_set_data()}
-        fallback_files.add("pok.json")
+        fallback_files.add(_DEFAULT_STRATEGY_CARD_FALLBACK_FILE)
         for filename in sorted(fallback_files):
             records.extend(
                 _load_json_records_from_url(

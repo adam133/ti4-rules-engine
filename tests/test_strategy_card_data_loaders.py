@@ -80,3 +80,13 @@ def test_fetch_strategy_card_set_data_falls_back_to_remote_file(monkeypatch) -> 
     assert sets["pok"]["scIDs"] == ["pok1leadership", "pok2diplomacy"]
 
     _data_loaders._load_strategy_card_set_data_cached.cache_clear()
+
+
+def test_load_json_records_from_url_rejects_untrusted_urls(monkeypatch) -> None:
+    monkeypatch.setattr(
+        _data_loaders,
+        "urlopen",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("should not be called")),
+    )
+
+    assert _data_loaders._load_json_records_from_url("https://example.com/data.json") == []
