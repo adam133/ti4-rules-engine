@@ -21,43 +21,21 @@ from __future__ import annotations
 import functools
 import json
 import pathlib
-import posixpath
-import sys
 from typing import Any
-from urllib.error import URLError
-from urllib.parse import unquote, urlparse
-from urllib.request import urlopen
 
 from ti4_rules_engine.models.unit import Unit, UnitType
+from ti4_rules_engine.scripts._data_paths import ASYNCTI4_RESOURCES_DIR, DATA_DIR
 
 # ---------------------------------------------------------------------------
 # Data file paths
 # ---------------------------------------------------------------------------
 
-_REPO_ROOT = pathlib.Path(__file__).resolve().parents[3]
-_ASYNCTI4_SUBMODULE_ROOT = _REPO_ROOT / "data" / "TI4_map_generator_bot"
-_ASYNCTI4_RESOURCES_DIR = _ASYNCTI4_SUBMODULE_ROOT / "src" / "main" / "resources"
-_DATA_DIR = _ASYNCTI4_RESOURCES_DIR / "data"
+_ASYNCTI4_SUBMODULE_ROOT = _ASYNCTI4_RESOURCES_DIR.parents[2]
+_DATA_DIR = DATA_DIR
 _ASYNCTI4_DATA_DIR = _ASYNCTI4_RESOURCES_DIR
 _TECH_DATA_DIR = _DATA_DIR / "technologies"
 _STRATEGY_CARD_DATA_DIR = _DATA_DIR / "strategy_cards"
 _STRATEGY_CARD_SETS_FILE = _DATA_DIR / "strategy_card_sets" / "strategyCardSets.json"
-_STRATEGY_CARD_SETS_REMOTE_URL = (
-    "https://raw.githubusercontent.com/AsyncTI4/TI4_map_generator_bot/master/"
-    "src/main/resources/data/strategy_card_sets/strategyCardSets.json"
-)
-_STRATEGY_CARD_REMOTE_URL_TEMPLATE = (
-    "https://raw.githubusercontent.com/AsyncTI4/TI4_map_generator_bot/master/"
-    "src/main/resources/data/strategy_cards/{filename}"
-)
-_ALLOWED_REMOTE_DATA_URL_PREFIX = (
-    "https://raw.githubusercontent.com/AsyncTI4/TI4_map_generator_bot/master/"
-    "src/main/resources/data/"
-)
-_ALLOWED_REMOTE_DATA_PATH_PREFIX = urlparse(_ALLOWED_REMOTE_DATA_URL_PREFIX).path
-# Keep PoK as a last-resort fallback because it is the default/common set and
-# includes the standard ``pok1``-``pok8`` cards shown in analyze summaries.
-_DEFAULT_STRATEGY_CARD_FALLBACK_FILE = "pok.json"
 _PUBLIC_OBJECTIVES_DATA_DIR = _DATA_DIR / "public_objectives"
 _LEADERS_DATA_DIR = _DATA_DIR / "leaders"
 _UNITS_DATA_DIR = _DATA_DIR / "units"
@@ -75,48 +53,19 @@ _FIGHTER_II_TECH_ID = "ff2"
 def _load_json_records_from_dir(data_dir: pathlib.Path) -> list[dict[str, Any]]:
     """Return dict records from all ``*.json`` files in *data_dir*."""
     records: list[dict[str, Any]] = []
-    try:
-        files = sorted(data_dir.glob("*.json"))
-    except OSError:
-        return records
+    if not data_dir.is_dir():
+        raise FileNotFoundError(f"Required data directory not found: {data_dir}")
+    files = sorted(data_dir.glob("*.json"))
+    if not files:
+        raise FileNotFoundError(f"No JSON data files found in required directory: {data_dir}")
     for path in files:
-        try:
-            with path.open(encoding="utf-8") as fh:
-                data = json.load(fh)
-        except (OSError, json.JSONDecodeError):
-            continue
+        with path.open(encoding="utf-8") as fh:
+            data = json.load(fh)
         if isinstance(data, list):
             records.extend(item for item in data if isinstance(item, dict))
         elif isinstance(data, dict):
             records.append(data)
     return records
-
-
-def _load_json_records_from_url(url: str) -> list[dict[str, Any]]:
-    """Return dict records from a JSON payload at *url*."""
-    parsed = urlparse(url)
-    decoded_path = unquote(parsed.path)
-    normalised_path = posixpath.normpath(decoded_path)
-    if (
-        parsed.scheme != "https"
-        or parsed.netloc != "raw.githubusercontent.com"
-        or not url.startswith(_ALLOWED_REMOTE_DATA_URL_PREFIX)
-        or not decoded_path.startswith(_ALLOWED_REMOTE_DATA_PATH_PREFIX)
-        or not normalised_path.startswith(_ALLOWED_REMOTE_DATA_PATH_PREFIX)
-        or any(segment == ".." for segment in decoded_path.split("/"))
-        or "%" in parsed.path
-    ):
-        return []
-    try:
-        with urlopen(url, timeout=30) as response:
-            payload = json.load(response)
-    except (OSError, URLError, TimeoutError, json.JSONDecodeError):
-        return []
-    if isinstance(payload, list):
-        return [item for item in payload if isinstance(item, dict)]
-    if isinstance(payload, dict):
-        return [payload]
-    return []
 
 
 # ---------------------------------------------------------------------------
@@ -130,7 +79,6 @@ def fetch_tech_names() -> dict[str, str]:
     Returns a dict mapping the short alias used in game exports (e.g. ``"amd"``)
     to the full display name (e.g. ``"Antimass Deflectors"``).  The data is
     ported from the AsyncTI4 bot and stored in ``data/technologies/*.json``.
-    Falls back to an empty dict if the file cannot be read.
     Results are cached after the first call.
     """
     return _load_tech_names_cached()
@@ -145,40 +93,25 @@ def _has_fighter_ii(researched_techs: list[str]) -> bool:
 @functools.cache
 def _load_fighter_ii_aliases_cached() -> frozenset[str]:
     """Return all technology aliases that represent Fighter II upgrades."""
-    try:
-        techs = _load_json_records_from_dir(_TECH_DATA_DIR)
-        aliases = {
-            t["alias"]
-            for t in techs
-            if isinstance(t, dict)
-            and "alias" in t
-            and (
-                t.get("alias") == _FIGHTER_II_TECH_ID or t.get("baseUpgrade") == _FIGHTER_II_TECH_ID
-            )
-        }
-        aliases.add(_FIGHTER_II_TECH_ID)
-        return frozenset(aliases)
-    except (OSError, json.JSONDecodeError, KeyError, TypeError):
-        return frozenset({_FIGHTER_II_TECH_ID})
+    techs = _load_json_records_from_dir(_TECH_DATA_DIR)
+    aliases = {
+        t["alias"]
+        for t in techs
+        if isinstance(t, dict)
+        and "alias" in t
+        and (t.get("alias") == _FIGHTER_II_TECH_ID or t.get("baseUpgrade") == _FIGHTER_II_TECH_ID)
+    }
+    aliases.add(_FIGHTER_II_TECH_ID)
+    return frozenset(aliases)
 
 
 @functools.cache
 def _load_tech_names_cached() -> dict[str, str]:
     """Cached implementation of :func:`fetch_tech_names`."""
-    try:
-        techs = _load_json_records_from_dir(_TECH_DATA_DIR)
-        return {
-            t["alias"]: t["name"]
-            for t in techs
-            if isinstance(t, dict) and "alias" in t and "name" in t
-        }
-    except (OSError, json.JSONDecodeError, KeyError, TypeError) as exc:
-        print(
-            f"Warning: could not load tech names from {_TECH_DATA_DIR} ({exc!r}); "
-            "showing raw tech aliases.",
-            file=sys.stderr,
-        )
-        return {}
+    techs = _load_json_records_from_dir(_TECH_DATA_DIR)
+    return {
+        t["alias"]: t["name"] for t in techs if isinstance(t, dict) and "alias" in t and "name" in t
+    }
 
 
 def fetch_action_tech_names() -> dict[str, str]:
@@ -194,18 +127,12 @@ def fetch_action_tech_names() -> dict[str, str]:
 @functools.cache
 def _load_action_tech_names_cached() -> dict[str, str]:
     """Cached implementation of :func:`fetch_action_tech_names`."""
-    try:
-        techs = _load_json_records_from_dir(_TECH_DATA_DIR)
-        return {
-            t["alias"]: t["name"]
-            for t in techs
-            if isinstance(t, dict)
-            and "alias" in t
-            and "name" in t
-            and "ACTION:" in t.get("text", "")
-        }
-    except (OSError, json.JSONDecodeError, KeyError, TypeError):
-        return {}
+    techs = _load_json_records_from_dir(_TECH_DATA_DIR)
+    return {
+        t["alias"]: t["name"]
+        for t in techs
+        if isinstance(t, dict) and "alias" in t and "name" in t and "ACTION:" in t.get("text", "")
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -241,22 +168,6 @@ def _normalise_strategy_card_text(value: object) -> str:
 def _load_strategy_card_data_cached() -> dict[str, dict[str, Any]]:
     """Cached implementation of :func:`fetch_strategy_card_data`."""
     records = _load_json_records_from_dir(_STRATEGY_CARD_DATA_DIR)
-    if not records:
-        set_data = fetch_strategy_card_set_data()
-        fallback_files = {f"{alias}.json" for alias in set_data}
-        fallback_files.add(_DEFAULT_STRATEGY_CARD_FALLBACK_FILE)
-        if not set_data:
-            print(
-                "Warning: strategy card set metadata is unavailable; "
-                f"attempting fallback file {_DEFAULT_STRATEGY_CARD_FALLBACK_FILE}.",
-                file=sys.stderr,
-            )
-        for filename in sorted(fallback_files):
-            records.extend(
-                _load_json_records_from_url(
-                    _STRATEGY_CARD_REMOTE_URL_TEMPLATE.format(filename=filename)
-                )
-            )
     strategy_cards: dict[str, dict[str, Any]] = {}
     for card in records:
         if not isinstance(card, dict):
@@ -287,12 +198,8 @@ def _load_strategy_card_data_cached() -> dict[str, dict[str, Any]]:
 @functools.cache
 def _load_strategy_card_set_data_cached() -> dict[str, dict[str, Any]]:
     """Cached implementation of :func:`fetch_strategy_card_set_data`."""
-    try:
-        with _STRATEGY_CARD_SETS_FILE.open(encoding="utf-8") as fh:
-            raw = json.load(fh)
-    except (OSError, json.JSONDecodeError):
-        remote_records = _load_json_records_from_url(_STRATEGY_CARD_SETS_REMOTE_URL)
-        raw = remote_records if remote_records else []
+    with _STRATEGY_CARD_SETS_FILE.open(encoding="utf-8") as fh:
+        raw = json.load(fh)
     if not isinstance(raw, list):
         return {}
     sets_by_alias: dict[str, dict[str, Any]] = {}
@@ -326,7 +233,6 @@ def fetch_objective_data() -> dict[str, dict[str, Any]]:
     Returns a dict mapping objective ID (e.g. ``"expand_borders"``) to the full
     objective record. Data is loaded from ``data/public_objectives/*.json``
     (ported from the AsyncTI4 bot).
-    Falls back to an empty dict if the file cannot be read.
     Results are cached after the first call.
     """
     return _load_objective_data_cached()
@@ -336,40 +242,32 @@ def fetch_objective_data() -> dict[str, dict[str, Any]]:
 def _load_objective_data_cached() -> dict[str, dict[str, Any]]:
     """Cached implementation of :func:`fetch_objective_data`."""
     objective_data: dict[str, dict[str, Any]] = {}
-    try:
-        public_objectives = _load_json_records_from_dir(_PUBLIC_OBJECTIVES_DATA_DIR)
-        for obj in public_objectives:
-            if not isinstance(obj, dict):
-                continue
-            alias = obj.get("alias")
-            if not alias:
-                continue
-            text = obj.get("text")
-            notes = obj.get("notes")
-            description = text
-            if text and notes:
-                description = f"{text} Note: {notes}"
-            public_entry: dict[str, Any] = {
-                "id": alias,
-                "name": obj.get("name", alias),
-                "points": obj.get("points"),
-                "description": description,
-                "source": obj.get("source"),
-            }
-            if obj.get("points") == 1:
-                public_entry["type"] = "stage_1"
-            elif obj.get("points") == 2:
-                public_entry["type"] = "stage_2"
-            else:
-                public_entry["type"] = "public"
-            objective_data[alias] = public_entry
-    except (OSError, json.JSONDecodeError, KeyError, TypeError) as exc:
-        print(
-            "Warning: could not load objective data from "
-            f"{_PUBLIC_OBJECTIVES_DATA_DIR} ({exc!r}); "
-            "showing raw objective IDs.",
-            file=sys.stderr,
-        )
+    public_objectives = _load_json_records_from_dir(_PUBLIC_OBJECTIVES_DATA_DIR)
+    for obj in public_objectives:
+        if not isinstance(obj, dict):
+            continue
+        alias = obj.get("alias")
+        if not alias:
+            continue
+        text = obj.get("text")
+        notes = obj.get("notes")
+        description = text
+        if text and notes:
+            description = f"{text} Note: {notes}"
+        public_entry: dict[str, Any] = {
+            "id": alias,
+            "name": obj.get("name", alias),
+            "points": obj.get("points"),
+            "description": description,
+            "source": obj.get("source"),
+        }
+        if obj.get("points") == 1:
+            public_entry["type"] = "stage_1"
+        elif obj.get("points") == 2:
+            public_entry["type"] = "stage_2"
+        else:
+            public_entry["type"] = "public"
+        objective_data[alias] = public_entry
 
     if objective_data:
         return objective_data
@@ -423,13 +321,10 @@ def fetch_leader_data() -> dict[str, dict[str, Any]]:
 @functools.cache
 def _load_leader_data_cached() -> dict[str, dict[str, Any]]:
     """Cached implementation of :func:`fetch_leader_data`."""
-    try:
-        leaders = _load_json_records_from_dir(_LEADERS_DATA_DIR)
-        return {
-            entry["id"]: entry for entry in leaders if isinstance(entry, dict) and "id" in entry
-        }
-    except (OSError, json.JSONDecodeError, KeyError, TypeError):
-        return {}
+    leaders = _load_json_records_from_dir(_LEADERS_DATA_DIR)
+    return {
+        entry["id"]: entry for entry in leaders if isinstance(entry, dict) and "id" in entry
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -456,14 +351,18 @@ def fetch_attachment_data() -> dict[str, dict[str, Any]]:
 def _load_system_data_cached() -> dict[str, dict[str, Any]]:
     """Cached implementation of :func:`fetch_system_data`."""
     systems: dict[str, dict[str, Any]] = {}
-    try:
-        for path in sorted(_ASYNCTI4_SYSTEMS_DATA_DIR.glob("*.json")):
-            with path.open(encoding="utf-8") as fh:
-                data = json.load(fh)
-            if isinstance(data, dict) and "id" in data:
-                systems[str(data["id"])] = data
-    except (OSError, json.JSONDecodeError, KeyError, TypeError):
-        return {}
+    if not _ASYNCTI4_SYSTEMS_DATA_DIR.is_dir():
+        raise FileNotFoundError(f"Required system data directory not found: {_ASYNCTI4_SYSTEMS_DATA_DIR}")
+    files = sorted(_ASYNCTI4_SYSTEMS_DATA_DIR.glob("*.json"))
+    if not files:
+        raise FileNotFoundError(
+            f"No system data JSON files found in required directory: {_ASYNCTI4_SYSTEMS_DATA_DIR}"
+        )
+    for path in files:
+        with path.open(encoding="utf-8") as fh:
+            data = json.load(fh)
+        if isinstance(data, dict) and "id" in data:
+            systems[str(data["id"])] = data
     return systems
 
 
@@ -471,14 +370,18 @@ def _load_system_data_cached() -> dict[str, dict[str, Any]]:
 def _load_planet_data_cached() -> dict[str, dict[str, Any]]:
     """Cached implementation of :func:`fetch_planet_data`."""
     planets: dict[str, dict[str, Any]] = {}
-    try:
-        for path in sorted(_ASYNCTI4_PLANETS_DATA_DIR.glob("*.json")):
-            with path.open(encoding="utf-8") as fh:
-                data = json.load(fh)
-            if isinstance(data, dict) and "id" in data:
-                planets[str(data["id"])] = data
-    except (OSError, json.JSONDecodeError, KeyError, TypeError):
-        return {}
+    if not _ASYNCTI4_PLANETS_DATA_DIR.is_dir():
+        raise FileNotFoundError(f"Required planet data directory not found: {_ASYNCTI4_PLANETS_DATA_DIR}")
+    files = sorted(_ASYNCTI4_PLANETS_DATA_DIR.glob("*.json"))
+    if not files:
+        raise FileNotFoundError(
+            f"No planet data JSON files found in required directory: {_ASYNCTI4_PLANETS_DATA_DIR}"
+        )
+    for path in files:
+        with path.open(encoding="utf-8") as fh:
+            data = json.load(fh)
+        if isinstance(data, dict) and "id" in data:
+            planets[str(data["id"])] = data
     return planets
 
 
@@ -486,18 +389,24 @@ def _load_planet_data_cached() -> dict[str, dict[str, Any]]:
 def _load_attachment_data_cached() -> dict[str, dict[str, Any]]:
     """Cached implementation of :func:`fetch_attachment_data`."""
     attachments: dict[str, dict[str, Any]] = {}
-    try:
-        for path in sorted(_ASYNCTI4_ATTACHMENTS_DATA_DIR.glob("*.json")):
-            with path.open(encoding="utf-8") as fh:
-                data = json.load(fh)
-            if isinstance(data, list):
-                for item in data:
-                    if isinstance(item, dict) and "id" in item:
-                        attachments[str(item["id"])] = item
-            elif isinstance(data, dict) and "id" in data:
-                attachments[str(data["id"])] = data
-    except (OSError, json.JSONDecodeError, KeyError, TypeError):
-        return {}
+    if not _ASYNCTI4_ATTACHMENTS_DATA_DIR.is_dir():
+        raise FileNotFoundError(
+            f"Required attachment data directory not found: {_ASYNCTI4_ATTACHMENTS_DATA_DIR}"
+        )
+    files = sorted(_ASYNCTI4_ATTACHMENTS_DATA_DIR.glob("*.json"))
+    if not files:
+        raise FileNotFoundError(
+            f"No attachment data JSON files found in required directory: {_ASYNCTI4_ATTACHMENTS_DATA_DIR}"
+        )
+    for path in files:
+        with path.open(encoding="utf-8") as fh:
+            data = json.load(fh)
+        if isinstance(data, list):
+            for item in data:
+                if isinstance(item, dict) and "id" in item:
+                    attachments[str(item["id"])] = item
+        elif isinstance(data, dict) and "id" in data:
+            attachments[str(data["id"])] = data
     return attachments
 
 
@@ -573,41 +482,39 @@ def _load_unit_data_cached(faction: str | None = None) -> dict[str, Unit]:
     units: dict[str, Unit] = {}
 
     # 1. Load base units (shared by all factions).
-    try:
-        base_file = _UNITS_DATA_DIR / "baseUnits.json"
-        with base_file.open(encoding="utf-8") as fh:
-            base_entries: list[dict[str, Any]] = json.load(fh)
-        for entry in base_entries:
+    base_file = _UNITS_DATA_DIR / "baseUnits.json"
+    if not base_file.is_file():
+        raise FileNotFoundError(f"Required unit data file not found: {base_file}")
+    with base_file.open(encoding="utf-8") as fh:
+        base_entries: list[dict[str, Any]] = json.load(fh)
+    for entry in base_entries:
+        model = _asyncti4_unit_to_model(entry)
+        if model is None:
+            continue
+        async_id = entry["asyncId"]
+        # Only keep the base (non-upgraded) variant as the default – it
+        # has no "upgradesFromUnitId" field.
+        if "upgradesFromUnitId" not in entry:
+            units[async_id] = model
+
+    # 2. Apply faction-specific overrides when requested.
+    if faction:
+        pok_file = _UNITS_DATA_DIR / "pok.json"
+        if not pok_file.is_file():
+            raise FileNotFoundError(f"Required unit data file not found: {pok_file}")
+        with pok_file.open(encoding="utf-8") as fh:
+            pok_entries: list[dict[str, Any]] = json.load(fh)
+        for entry in pok_entries:
+            if entry.get("faction") != faction:
+                continue
+            if "upgradesFromUnitId" in entry:
+                # Upgraded variants are not the unit's default stats.
+                continue
             model = _asyncti4_unit_to_model(entry)
             if model is None:
                 continue
             async_id = entry["asyncId"]
-            # Only keep the base (non-upgraded) variant as the default – it
-            # has no "upgradesFromUnitId" field.
-            if "upgradesFromUnitId" not in entry:
-                units[async_id] = model
-    except (OSError, json.JSONDecodeError, KeyError, TypeError):
-        pass
-
-    # 2. Apply faction-specific overrides when requested.
-    if faction:
-        try:
-            pok_file = _UNITS_DATA_DIR / "pok.json"
-            with pok_file.open(encoding="utf-8") as fh:
-                pok_entries: list[dict[str, Any]] = json.load(fh)
-            for entry in pok_entries:
-                if entry.get("faction") != faction:
-                    continue
-                if "upgradesFromUnitId" in entry:
-                    # Upgraded variants are not the unit's default stats.
-                    continue
-                model = _asyncti4_unit_to_model(entry)
-                if model is None:
-                    continue
-                async_id = entry["asyncId"]
-                units[async_id] = model
-        except (OSError, json.JSONDecodeError, KeyError, TypeError):
-            pass
+            units[async_id] = model
 
     # Add "cr" as an alias for "ca" (cruiser) – some AsyncTI4 exports use
     # "cr" as the entity ID for cruisers.

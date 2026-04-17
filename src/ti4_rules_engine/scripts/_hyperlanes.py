@@ -16,19 +16,16 @@ provides:
 from __future__ import annotations
 
 import functools
-import pathlib
-import sys
 from typing import Any
 
+from ti4_rules_engine.scripts._data_paths import DATA_DIR
 from ti4_rules_engine.scripts._hex_grid import get_adjacent_positions
 from ti4_rules_engine.scripts._tile_catalog import (
     _TILE_CATALOG,
     _is_hyperlane_tile_id,
 )
 
-_REPO_ROOT = pathlib.Path(__file__).resolve().parents[3]
-_ASYNCTI4_SUBMODULE_ROOT = _REPO_ROOT / "data" / "TI4_map_generator_bot"
-_DATA_DIR = _ASYNCTI4_SUBMODULE_ROOT / "src" / "main" / "resources" / "data"
+_DATA_DIR = DATA_DIR
 _HYPERLANES_DATA_FILE = _DATA_DIR / "hyperlanes.properties"
 
 # Entry-agnostic fallback is only enabled when a source has 2+ adjacent
@@ -43,32 +40,24 @@ def _load_hyperlane_connections() -> dict[str, list[list[int]]]:
     Returns a dict mapping tile ID (e.g. ``"83a"``, ``"86a240"``) to a 6×6
     integer adjacency matrix where ``matrix[i][j] == 1`` means edge *i* of the
     tile is connected to edge *j* through the hyperlane path.  The matrix is
-    always symmetric.  Falls back to an empty dict on any error.
+    always symmetric.
     """
-    try:
-        connections: dict[str, list[list[int]]] = {}
-        with _HYPERLANES_DATA_FILE.open(encoding="utf-8") as fh:
-            for raw_line in fh:
-                line = raw_line.strip()
-                if not line or line.startswith("#") or "=" not in line:
-                    continue
-                tile_id, matrix_text = line.split("=", maxsplit=1)
-                matrix = [
-                    [int(value) for value in row.split(",")] for row in matrix_text.split(";")
-                ]
-                if len(matrix) != 6 or any(len(row) != 6 for row in matrix):
-                    raise ValueError(
-                        f"Invalid hyperlane matrix dimensions for {tile_id!r}: {matrix_text!r}"
-                    )
-                connections[tile_id] = matrix
-        return connections
-    except (OSError, ValueError) as exc:
-        print(
-            f"Warning: could not load hyperlane data from {_HYPERLANES_DATA_FILE}"
-            f" ({exc!r}); hyperlane adjacency will be empty.",
-            file=sys.stderr,
-        )
-        return {}
+    connections: dict[str, list[list[int]]] = {}
+    with _HYPERLANES_DATA_FILE.open(encoding="utf-8") as fh:
+        for raw_line in fh:
+            line = raw_line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            tile_id, matrix_text = line.split("=", maxsplit=1)
+            matrix = [
+                [int(value) for value in row.split(",")] for row in matrix_text.split(";")
+            ]
+            if len(matrix) != 6 or any(len(row) != 6 for row in matrix):
+                raise ValueError(
+                    f"Invalid hyperlane matrix dimensions for {tile_id!r}: {matrix_text!r}"
+                )
+            connections[tile_id] = matrix
+    return connections
 
 
 def _build_hyperlane_adjacency(
