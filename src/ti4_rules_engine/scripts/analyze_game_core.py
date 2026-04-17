@@ -80,6 +80,7 @@ from ti4_rules_engine.scripts._data_loaders import (  # noqa: F401
 )
 from ti4_rules_engine.scripts._fleet_movement import (  # noqa: F401
     _COMBAT_UNITS,
+    _ARRIVAL_LABEL_ENTITY_IDS,
     _DEFAULT_SPACE_DOCK_FIGHTER_CAPACITY,
     _FIGHTER_ENTITY_ID,
     _FIGHTER_II_MOVE_SPEED,
@@ -90,6 +91,9 @@ from ti4_rules_engine.scripts._fleet_movement import (  # noqa: F401
     _TRANSPORTED_UNITS,
     _UNIT_NAMES,
     _bfs,
+    _arrival_combat_size,
+    _arrival_label_to_unit_dict,
+    _arrival_to_unit_dicts,
     _build_combat_group,
     _compute_starting_transport_payload,
     _count_units_by_entity_id,

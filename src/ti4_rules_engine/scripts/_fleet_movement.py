@@ -77,6 +77,17 @@ _FIGHTER_ENTITY_ID = "ff"
 _SPACE_DOCK_ENTITY_ID = "sd"
 _DEFAULT_SPACE_DOCK_FIGHTER_CAPACITY = 3
 _FIGHTER_II_MOVE_SPEED = 2
+_ARRIVAL_LABEL_ENTITY_IDS: dict[str, str] = {
+    "carrier": "cv",
+    "destroyer": "dd",
+    "cruiser": "ca",
+    "dreadnought": "dn",
+    "flagship": "fs",
+    "war sun": "ws",
+    "fighter": "ff",
+    "mech": "mf",
+    "infantry": "gf",
+}
 
 # ---------------------------------------------------------------------------
 # Module-level unit registries (built from base unit data at import time)
@@ -408,6 +419,63 @@ def _compute_starting_transport_payload(
 # ---------------------------------------------------------------------------
 # Combat helpers
 # ---------------------------------------------------------------------------
+
+
+def _arrival_label_to_unit_dict(label: str) -> dict[str, Any] | None:
+    """Convert a tactical-arrival label (e.g. ``"fighter x2"``) to a raw unit dict."""
+    normalized = label.strip().lower()
+    if not normalized:
+        return None
+
+    unit_name = normalized
+    count = 1
+    if " x" in normalized:
+        unit_name, suffix = normalized.rsplit(" x", 1)
+        try:
+            count = int(suffix)
+        except ValueError:
+            return None
+        if count <= 0:
+            return None
+
+    entity_id = _ARRIVAL_LABEL_ENTITY_IDS.get(unit_name.strip())
+    if entity_id is None:
+        return None
+    return {"entityId": entity_id, "entityType": "unit", "count": count}
+
+
+def _arrival_to_unit_dicts(arrival: dict[str, Any]) -> list[dict[str, Any]]:
+    """Build aggregated raw unit dicts from a tactical-arrival payload."""
+    counts: dict[str, int] = {}
+    for key in ("ships", "transported_units"):
+        labels = arrival.get(key) or []
+        if not isinstance(labels, list):
+            continue
+        for label in labels:
+            if not isinstance(label, str):
+                continue
+            unit = _arrival_label_to_unit_dict(label)
+            if unit is None:
+                continue
+            eid = str(unit["entityId"])
+            counts[eid] = counts.get(eid, 0) + int(unit["count"])
+
+    return [
+        {"entityId": eid, "entityType": "unit", "count": count}
+        for eid, count in sorted(counts.items())
+        if count > 0
+    ]
+
+
+def _arrival_combat_size(arrival: dict[str, Any]) -> int:
+    """Return total combat-capable unit count represented by an arrival payload."""
+    combat_size = 0
+    for unit in _arrival_to_unit_dicts(arrival):
+        unit_def = _COMBAT_UNITS.get(str(unit["entityId"]))
+        if unit_def is None or unit_def.combat is None:
+            continue
+        combat_size += int(unit["count"])
+    return combat_size
 
 
 def _build_combat_group(
@@ -919,15 +987,9 @@ def _get_tactical_reach(
             # Use the fleet with the most ships for combat simulation
             best_arrival = max(
                 dest_data["arrivals"],
-                key=lambda a: len(a["ships"]),
+                key=_arrival_combat_size,
             )
-            # Gather the raw fleet units for the best arrival
-            best_from = best_arrival["from_pos"]
-            from_tile_data = tile_unit_data.get(best_from) or {}
-            from_space = from_tile_data.get("space") or {}
-            attacker_raw: list[dict[str, Any]] = (
-                from_space.get(faction) or []
-            ) if isinstance(from_space, dict) else []
+            attacker_raw = _arrival_to_unit_dicts(best_arrival)
 
             attacker_group = _build_combat_group(attacker_raw, faction_units)
             if not attacker_group.units:

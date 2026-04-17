@@ -905,6 +905,41 @@ class TestTacticalReachByDestination:
         assert empty_dest is not None
         assert "unopposed" in (empty_dest["combat_result"] or "")
 
+    def test_combat_uses_arrival_payload_not_origin_fleet(self, monkeypatch) -> None:
+        from ti4_rules_engine.engine.combat import CombatResult
+        from ti4_rules_engine.scripts import _fleet_movement
+
+        captured: dict[str, dict[str, int]] = {}
+
+        def _fake_simulate_combat(attacker_group, defender_group, simulations, seed):
+            captured["attacker"] = {cu.unit.id: cu.count for cu in attacker_group.units}
+            return CombatResult(
+                attacker_win_probability=0.5,
+                defender_win_probability=0.4,
+                attacker_expected_survivors={},
+                defender_expected_survivors={},
+                average_rounds=2.0,
+            )
+
+        monkeypatch.setattr(_fleet_movement, "simulate_combat", _fake_simulate_combat)
+
+        tile_unit_data = _make_full_map()
+        tile_unit_data["000"]["space"] = {
+            "myfaction": [
+                {"entityId": "dd", "entityType": "unit", "count": 1},
+                {"entityId": "cv", "entityType": "unit", "count": 1},
+                {"entityId": "ff", "entityType": "unit", "count": 2},
+            ]
+        }
+        tile_unit_data["201"]["space"] = {
+            "enemy": [{"entityId": "ca", "entityType": "unit", "count": 1}]
+        }
+
+        state = self._make_state(tile_unit_data, active_player_id="p1")
+        by_dest = _get_tactical_reach("p1", state)["by_destination"]
+        assert "201" in by_dest
+        assert captured["attacker"] == {"destroyer": 1}
+
     def test_intermediate_pickup_systems(self) -> None:
         """Intermediate systems with ground forces appear in pickup_systems."""
         tile_unit_data = _make_full_map()
@@ -1273,6 +1308,44 @@ class TestBuildCombatGroup:
         ]
         group = _build_combat_group(units)
         assert len(group.units) == 3
+
+
+class TestArrivalCombatHelpers:
+    def test_arrival_label_to_unit_dict_parses_labels(self) -> None:
+        from ti4_rules_engine.scripts.analyze_game import _arrival_label_to_unit_dict
+
+        assert _arrival_label_to_unit_dict("cruiser") == {
+            "entityId": "ca",
+            "entityType": "unit",
+            "count": 1,
+        }
+        assert _arrival_label_to_unit_dict("fighter x2") == {
+            "entityId": "ff",
+            "entityType": "unit",
+            "count": 2,
+        }
+
+    def test_arrival_label_to_unit_dict_rejects_malformed(self) -> None:
+        from ti4_rules_engine.scripts.analyze_game import _arrival_label_to_unit_dict
+
+        assert _arrival_label_to_unit_dict("") is None
+        assert _arrival_label_to_unit_dict("unknown") is None
+        assert _arrival_label_to_unit_dict("fighter x0") is None
+        assert _arrival_label_to_unit_dict("fighter xabc") is None
+
+    def test_arrival_to_unit_dicts_aggregates_counts(self) -> None:
+        from ti4_rules_engine.scripts.analyze_game import _arrival_to_unit_dicts
+
+        arrival = {
+            "ships": ["destroyer", "cruiser x2"],
+            "transported_units": ["fighter x2", "fighter", "infantry"],
+        }
+        assert _arrival_to_unit_dicts(arrival) == [
+            {"entityId": "ca", "entityType": "unit", "count": 2},
+            {"entityId": "dd", "entityType": "unit", "count": 1},
+            {"entityId": "ff", "entityType": "unit", "count": 3},
+            {"entityId": "gf", "entityType": "unit", "count": 1},
+        ]
 
 
 class TestFormatCombatResult:
