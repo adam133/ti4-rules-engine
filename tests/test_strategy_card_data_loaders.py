@@ -83,10 +83,13 @@ def test_fetch_strategy_card_set_data_falls_back_to_remote_file(monkeypatch) -> 
 
 
 def test_load_json_records_from_url_rejects_untrusted_urls(monkeypatch) -> None:
+    def _raise_if_called(*_args, **_kwargs):
+        raise RuntimeError("should not be called")
+
     monkeypatch.setattr(
         _data_loaders,
         "urlopen",
-        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("should not be called")),
+        _raise_if_called,
     )
 
     assert _data_loaders._load_json_records_from_url("https://example.com/data.json") == []

@@ -53,6 +53,7 @@ _ALLOWED_REMOTE_DATA_URL_PREFIX = (
     "https://raw.githubusercontent.com/AsyncTI4/TI4_map_generator_bot/master/"
     "src/main/resources/data/"
 )
+_ALLOWED_REMOTE_DATA_PATH_PREFIX = "/AsyncTI4/TI4_map_generator_bot/master/src/main/resources/data/"
 # Keep PoK as a last-resort fallback because it is the default/common set and
 # includes the standard ``pok1``-``pok8`` cards shown in analyze summaries.
 _DEFAULT_STRATEGY_CARD_FALLBACK_FILE = "pok.json"
@@ -97,6 +98,9 @@ def _load_json_records_from_url(url: str) -> list[dict[str, Any]]:
         parsed.scheme != "https"
         or parsed.netloc != "raw.githubusercontent.com"
         or not url.startswith(_ALLOWED_REMOTE_DATA_URL_PREFIX)
+        or not parsed.path.startswith(_ALLOWED_REMOTE_DATA_PATH_PREFIX)
+        or ".." in parsed.path
+        or "%" in parsed.path
     ):
         return []
     try:
@@ -234,8 +238,15 @@ def _load_strategy_card_data_cached() -> dict[str, dict[str, Any]]:
     """Cached implementation of :func:`fetch_strategy_card_data`."""
     records = _load_json_records_from_dir(_STRATEGY_CARD_DATA_DIR)
     if not records:
-        fallback_files = {f"{alias}.json" for alias in fetch_strategy_card_set_data()}
+        set_data = fetch_strategy_card_set_data()
+        fallback_files = {f"{alias}.json" for alias in set_data}
         fallback_files.add(_DEFAULT_STRATEGY_CARD_FALLBACK_FILE)
+        if not set_data:
+            print(
+                "Warning: could not load strategy card set metadata; "
+                f"falling back to {_DEFAULT_STRATEGY_CARD_FALLBACK_FILE}.",
+                file=sys.stderr,
+            )
         for filename in sorted(fallback_files):
             records.extend(
                 _load_json_records_from_url(
@@ -249,6 +260,9 @@ def _load_strategy_card_data_cached() -> dict[str, dict[str, Any]]:
         card_id = card.get("id")
         if not card_id:
             continue
+        # Strategy-card payloads can vary by source/version:
+        # - AsyncTI4 canonical: ``primaryTexts`` / ``secondaryTexts`` arrays
+        # - Legacy/custom variants: ``primaryText`` / ``secondaryText`` or direct string fields
         primary = _normalise_strategy_card_text(
             card.get("primaryTexts") or card.get("primaryText") or card.get("primary")
         )
