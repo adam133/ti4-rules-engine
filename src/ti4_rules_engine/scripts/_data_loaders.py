@@ -97,14 +97,13 @@ def _load_json_records_from_url(url: str) -> list[dict[str, Any]]:
     parsed = urlparse(url)
     decoded_path = unquote(parsed.path)
     normalised_path = posixpath.normpath(decoded_path)
-    decoded_segments = [segment for segment in decoded_path.split("/") if segment]
     if (
         parsed.scheme != "https"
         or parsed.netloc != "raw.githubusercontent.com"
         or not url.startswith(_ALLOWED_REMOTE_DATA_URL_PREFIX)
         or not decoded_path.startswith(_ALLOWED_REMOTE_DATA_PATH_PREFIX)
         or not normalised_path.startswith(_ALLOWED_REMOTE_DATA_PATH_PREFIX)
-        or any(segment == ".." for segment in decoded_segments)
+        or any(segment == ".." for segment in decoded_path.split("/"))
         or "%" in parsed.path
     ):
         return []
@@ -248,8 +247,8 @@ def _load_strategy_card_data_cached() -> dict[str, dict[str, Any]]:
         fallback_files.add(_DEFAULT_STRATEGY_CARD_FALLBACK_FILE)
         if not set_data:
             print(
-                "Warning: could not load strategy card set metadata; "
-                f"falling back to {_DEFAULT_STRATEGY_CARD_FALLBACK_FILE}.",
+                "Warning: strategy card set metadata is unavailable; "
+                f"attempting fallback file {_DEFAULT_STRATEGY_CARD_FALLBACK_FILE}.",
                 file=sys.stderr,
             )
         for filename in sorted(fallback_files):
