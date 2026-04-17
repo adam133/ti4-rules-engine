@@ -30,6 +30,7 @@ from ti4_rules_engine.scripts._data_paths import ASYNCTI4_RESOURCES_DIR, DATA_DI
 # Data file paths
 # ---------------------------------------------------------------------------
 
+_ASYNCTI4_RESOURCES_DIR = ASYNCTI4_RESOURCES_DIR
 _ASYNCTI4_SUBMODULE_ROOT = _ASYNCTI4_RESOURCES_DIR.parents[2]
 _DATA_DIR = DATA_DIR
 _ASYNCTI4_DATA_DIR = _ASYNCTI4_RESOURCES_DIR
@@ -352,7 +353,9 @@ def _load_system_data_cached() -> dict[str, dict[str, Any]]:
     """Cached implementation of :func:`fetch_system_data`."""
     systems: dict[str, dict[str, Any]] = {}
     if not _ASYNCTI4_SYSTEMS_DATA_DIR.is_dir():
-        raise FileNotFoundError(f"Required system data directory not found: {_ASYNCTI4_SYSTEMS_DATA_DIR}")
+        raise FileNotFoundError(
+            f"Required system data directory not found: {_ASYNCTI4_SYSTEMS_DATA_DIR}"
+        )
     files = sorted(_ASYNCTI4_SYSTEMS_DATA_DIR.glob("*.json"))
     if not files:
         raise FileNotFoundError(
@@ -371,7 +374,9 @@ def _load_planet_data_cached() -> dict[str, dict[str, Any]]:
     """Cached implementation of :func:`fetch_planet_data`."""
     planets: dict[str, dict[str, Any]] = {}
     if not _ASYNCTI4_PLANETS_DATA_DIR.is_dir():
-        raise FileNotFoundError(f"Required planet data directory not found: {_ASYNCTI4_PLANETS_DATA_DIR}")
+        raise FileNotFoundError(
+            f"Required planet data directory not found: {_ASYNCTI4_PLANETS_DATA_DIR}"
+        )
     files = sorted(_ASYNCTI4_PLANETS_DATA_DIR.glob("*.json"))
     if not files:
         raise FileNotFoundError(
@@ -396,7 +401,8 @@ def _load_attachment_data_cached() -> dict[str, dict[str, Any]]:
     files = sorted(_ASYNCTI4_ATTACHMENTS_DATA_DIR.glob("*.json"))
     if not files:
         raise FileNotFoundError(
-            f"No attachment data JSON files found in required directory: {_ASYNCTI4_ATTACHMENTS_DATA_DIR}"
+            "No attachment data JSON files found in required directory: "
+            f"{_ASYNCTI4_ATTACHMENTS_DATA_DIR}"
         )
     for path in files:
         with path.open(encoding="utf-8") as fh:
