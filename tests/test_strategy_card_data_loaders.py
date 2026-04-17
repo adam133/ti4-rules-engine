@@ -96,6 +96,7 @@ def test_load_json_records_from_url_rejects_untrusted_urls(monkeypatch) -> None:
         "https://example.com/data.json",
         "http://raw.githubusercontent.com/AsyncTI4/TI4_map_generator_bot/master/src/main/resources/data/strategy_cards/pok.json",
         "https://raw.githubusercontent.com/AsyncTI4/TI4_map_generator_bot/master/README.md",
+        "https://raw.githubusercontent.com/AsyncTI4/TI4_map_generator_bot/master/src/other/file.json",
         "https://raw.githubusercontent.com/AsyncTI4/TI4_map_generator_bot/master/src/main/resources/data/strategy_cards/../pok.json",
         "https://raw.githubusercontent.com/AsyncTI4/TI4_map_generator_bot/master/src/main/resources/data/strategy_cards/%2e%2e/pok.json",
     ]

@@ -97,18 +97,19 @@ def _load_json_records_from_url(url: str) -> list[dict[str, Any]]:
     parsed = urlparse(url)
     decoded_path = unquote(parsed.path)
     normalised_path = posixpath.normpath(decoded_path)
-    if decoded_path.endswith("/"):
-        normalised_path = f"{normalised_path}/"
+    decoded_segments = [segment for segment in decoded_path.split("/") if segment]
     if (
         parsed.scheme != "https"
         or parsed.netloc != "raw.githubusercontent.com"
         or not url.startswith(_ALLOWED_REMOTE_DATA_URL_PREFIX)
+        or not decoded_path.startswith(_ALLOWED_REMOTE_DATA_PATH_PREFIX)
         or not normalised_path.startswith(_ALLOWED_REMOTE_DATA_PATH_PREFIX)
-        or ".." in decoded_path
+        or any(segment == ".." for segment in decoded_segments)
+        or "%" in decoded_path
     ):
         return []
     try:
-        with urlopen(url, timeout=30) as response:  # noqa: S310
+        with urlopen(url, timeout=30) as response:
             payload = json.load(response)
     except (OSError, URLError, TimeoutError, json.JSONDecodeError):
         return []
