@@ -32,7 +32,6 @@ from typing import TYPE_CHECKING, Any
 
 from ti4_rules_engine.engine.combat import CombatGroup, CombatResult, CombatUnit, simulate_combat
 from ti4_rules_engine.models.unit import Unit
-
 from ti4_rules_engine.scripts._data_loaders import (
     _build_ship_capacity_map,
     _build_ship_move_map,
