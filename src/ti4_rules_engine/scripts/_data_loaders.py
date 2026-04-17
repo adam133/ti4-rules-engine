@@ -23,6 +23,8 @@ import json
 import pathlib
 import sys
 from typing import Any
+from urllib.error import URLError
+from urllib.request import urlopen
 
 from ti4_rules_engine.models.unit import Unit, UnitType
 
@@ -38,6 +40,14 @@ _ASYNCTI4_DATA_DIR = _ASYNCTI4_RESOURCES_DIR
 _TECH_DATA_DIR = _DATA_DIR / "technologies"
 _STRATEGY_CARD_DATA_DIR = _DATA_DIR / "strategy_cards"
 _STRATEGY_CARD_SETS_FILE = _DATA_DIR / "strategy_card_sets" / "strategyCardSets.json"
+_STRATEGY_CARD_SETS_REMOTE_URL = (
+    "https://raw.githubusercontent.com/AsyncTI4/TI4_map_generator_bot/master/"
+    "src/main/resources/data/strategy_card_sets/strategyCardSets.json"
+)
+_STRATEGY_CARD_REMOTE_URL_TEMPLATE = (
+    "https://raw.githubusercontent.com/AsyncTI4/TI4_map_generator_bot/master/"
+    "src/main/resources/data/strategy_cards/{filename}"
+)
 _PUBLIC_OBJECTIVES_DATA_DIR = _DATA_DIR / "public_objectives"
 _LEADERS_DATA_DIR = _DATA_DIR / "leaders"
 _UNITS_DATA_DIR = _DATA_DIR / "units"
@@ -70,6 +80,20 @@ def _load_json_records_from_dir(data_dir: pathlib.Path) -> list[dict[str, Any]]:
         elif isinstance(data, dict):
             records.append(data)
     return records
+
+
+def _load_json_records_from_url(url: str) -> list[dict[str, Any]]:
+    """Return dict records from a JSON payload at *url*."""
+    try:
+        with urlopen(url, timeout=30) as response:  # noqa: S310
+            payload = json.load(response)
+    except (OSError, URLError, TimeoutError, json.JSONDecodeError):
+        return []
+    if isinstance(payload, list):
+        return [item for item in payload if isinstance(item, dict)]
+    if isinstance(payload, dict):
+        return [payload]
+    return []
 
 
 # ---------------------------------------------------------------------------
@@ -194,6 +218,15 @@ def _normalise_strategy_card_text(value: object) -> str:
 def _load_strategy_card_data_cached() -> dict[str, dict[str, Any]]:
     """Cached implementation of :func:`fetch_strategy_card_data`."""
     records = _load_json_records_from_dir(_STRATEGY_CARD_DATA_DIR)
+    if not records:
+        fallback_files = {f"{alias}.json" for alias in fetch_strategy_card_set_data()}
+        fallback_files.add("pok.json")
+        for filename in sorted(fallback_files):
+            records.extend(
+                _load_json_records_from_url(
+                    _STRATEGY_CARD_REMOTE_URL_TEMPLATE.format(filename=filename)
+                )
+            )
     strategy_cards: dict[str, dict[str, Any]] = {}
     for card in records:
         if not isinstance(card, dict):
@@ -201,8 +234,12 @@ def _load_strategy_card_data_cached() -> dict[str, dict[str, Any]]:
         card_id = card.get("id")
         if not card_id:
             continue
-        primary = _normalise_strategy_card_text(card.get("primaryTexts"))
-        secondary = _normalise_strategy_card_text(card.get("secondaryTexts"))
+        primary = _normalise_strategy_card_text(
+            card.get("primaryTexts") or card.get("primaryText") or card.get("primary")
+        )
+        secondary = _normalise_strategy_card_text(
+            card.get("secondaryTexts") or card.get("secondaryText") or card.get("secondary")
+        )
         strategy_cards[str(card_id)] = {
             "id": str(card_id),
             "name": str(card.get("name") or card_id),
@@ -221,7 +258,8 @@ def _load_strategy_card_set_data_cached() -> dict[str, dict[str, Any]]:
         with _STRATEGY_CARD_SETS_FILE.open(encoding="utf-8") as fh:
             raw = json.load(fh)
     except (OSError, json.JSONDecodeError):
-        return {}
+        remote_records = _load_json_records_from_url(_STRATEGY_CARD_SETS_REMOTE_URL)
+        raw = remote_records if remote_records else []
     if not isinstance(raw, list):
         return {}
     sets_by_alias: dict[str, dict[str, Any]] = {}
