@@ -12,17 +12,39 @@ from ti4_rules_engine.scripts.analyze_game import (
 
 
 def test_strategy_card_details_resolves_known_card() -> None:
-    details = _strategy_card_details("7")
+    details = _strategy_card_details("pok7technology")
     assert details["initiative"] == 7
     assert details["name"] == "Technology"
     assert "Research 1 technology" in details["primary"]
-    assert "6 resources" in details["secondary"]
+    assert "4 resources" in details["secondary"]
 
 
 def test_strategy_card_details_supports_asyncti4_id_format() -> None:
     details = _strategy_card_details("pok3politics")
     assert details["initiative"] == 3
     assert details["name"] == "Politics"
+
+
+def test_strategy_card_details_with_numeric_id_uses_strategy_card_map(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        analyze_game_core,
+        "fetch_strategy_card_data",
+        lambda: {
+            "te4construction": {
+                "id": "te4construction",
+                "initiative": 4,
+                "name": "TE Construction",
+                "primary": "te primary",
+                "secondary": "te secondary",
+            }
+        },
+    )
+    details = analyze_game_core._strategy_card_details_for_map("4", {"4": "te4construction"})
+    assert details["initiative"] == 4
+    assert details["name"] == "TE Construction"
+    assert details["primary"] == "te primary"
 
 
 def test_strategy_card_details_unknown_card_falls_back_to_raw_id() -> None:
@@ -46,6 +68,13 @@ def test_build_turn_order_tracker_uses_lowest_initiative() -> None:
             ),
             "bob": PlayerState(player_id="bob", faction_id="b", strategy_card_ids=["3"]),
             "cara": PlayerState(player_id="cara", faction_id="c", strategy_card_ids=[]),
+        },
+        extra={
+            "strategy_card_id_map": {
+                "2": "pok2diplomacy",
+                "3": "pok3politics",
+                "7": "pok7technology",
+            }
         },
     )
     tracker = _build_turn_order_tracker(state)

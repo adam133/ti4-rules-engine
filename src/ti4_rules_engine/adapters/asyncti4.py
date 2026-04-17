@@ -512,9 +512,6 @@ def from_asyncti4(data: dict[str, Any] | AsyncTI4GameData) -> GameState:
         for initiative, card_id in data.strategyCardIdMap.items()
         if str(card_id).strip()
     }
-    for card in data.strategyCards:
-        if card.initiative > 0 and card.id:
-            strategy_card_id_map.setdefault(str(card.initiative), card.id)
 
     return GameState(
         game_id=data.gameName,

@@ -32,7 +32,6 @@ import surface used by external consumers and tests.
 from __future__ import annotations
 
 import json
-import re
 import sys
 import urllib.request
 from typing import TYPE_CHECKING, Any
@@ -146,53 +145,6 @@ if TYPE_CHECKING:
 
 WEB_DATA_URL_TEMPLATE = "https://bot.asyncti4.com/api/public/game/{game}/web-data"
 
-_DEFAULT_STRATEGY_CARD_DATA_BY_INITIATIVE: dict[int, dict[str, str]] = {
-    1: {
-        "name": "Leadership",
-        "primary": "Gain 3 command tokens. Then spend influence to gain additional command tokens.",
-        "secondary": "Spend 1 strategy token to gain 1 command token.",
-    },
-    2: {
-        "name": "Diplomacy",
-        "primary": "Choose 1 system and ready all planets you control in that system.",
-        "secondary": "Spend 1 strategy token to ready up to 2 exhausted planets you control.",
-    },
-    3: {
-        "name": "Politics",
-        "primary": "Choose another player to gain the speaker token. Draw 2 action cards.",
-        "secondary": "Spend 1 strategy token to draw 2 action cards.",
-    },
-    4: {
-        "name": "Construction",
-        "primary": "Place 1 space dock and 1 PDS on planets you control.",
-        "secondary": (
-            "Spend 1 strategy token to place either 1 space dock or 1 PDS on a planet you control."
-        ),
-    },
-    5: {
-        "name": "Trade",
-        "primary": "Gain 3 trade goods and replenish commodities for all players.",
-        "secondary": "Spend 1 strategy token to replenish your commodities.",
-    },
-    6: {
-        "name": "Warfare",
-        "primary": "Remove 1 command token from the game board; then redistribute command tokens.",
-        "secondary": "Spend 1 strategy token to use production in your home system.",
-    },
-    7: {
-        "name": "Technology",
-        "primary": "Research 1 technology.",
-        "secondary": "Spend 1 strategy token and 6 resources to research 1 technology.",
-    },
-    8: {
-        "name": "Imperial",
-        "primary": (
-            "Score 1 public objective if possible; if you control Mecatol Rex, "
-            "gain 1 victory point."
-        ),
-        "secondary": "Spend 1 strategy token to draw 1 secret objective.",
-    },
-}
 _UNKNOWN_INITIATIVE_SORT_KEY = 99
 
 # ---------------------------------------------------------------------------
@@ -214,15 +166,11 @@ def fetch_game_json(game_number: str) -> dict:
 
 
 def _parse_strategy_card_initiative(card_id: str) -> int | None:
-    """Extract initiative from strategy-card IDs such as '3' or 'pok3politics'."""
+    """Extract initiative from numeric strategy-card initiative IDs."""
     if card_id.isdigit():
         initiative = int(card_id)
         return initiative if 1 <= initiative <= 8 else None
-    match = re.search(r"(\d+)", card_id)
-    if not match:
-        return None
-    initiative = int(match.group(1))
-    return initiative if 1 <= initiative <= 8 else None
+    return None
 
 
 def _strategy_card_details(card_id: str) -> dict[str, Any]:
@@ -234,24 +182,20 @@ def _strategy_card_details_for_map(
     card_id: str, strategy_card_id_map: dict[str, str] | None
 ) -> dict[str, Any]:
     """Return display metadata for a strategy card ID and optional initiative→ID map."""
-    initiative = _parse_strategy_card_initiative(card_id)
-    resolved_card_id = card_id
-    if strategy_card_id_map and initiative is not None:
-        mapped_card_id = strategy_card_id_map.get(str(initiative))
-        if mapped_card_id:
-            resolved_card_id = mapped_card_id
-
     strategy_cards = fetch_strategy_card_data()
-    by_id = strategy_cards.get(resolved_card_id) or strategy_cards.get(card_id)
-    if by_id:
-        card = by_id
-    elif initiative is None:
-        card = {}
-    else:
-        card = _DEFAULT_STRATEGY_CARD_DATA_BY_INITIATIVE.get(initiative, {})
+    initiative = _parse_strategy_card_initiative(card_id)
+    resolved_card_id = (
+        strategy_card_id_map.get(str(initiative), card_id)
+        if strategy_card_id_map and initiative is not None
+        else card_id
+    )
+    card = strategy_cards.get(resolved_card_id, {})
+    card_initiative = card.get("initiative")
+    if isinstance(card_initiative, int):
+        initiative = card_initiative
     return {
         "initiative": initiative,
-        "name": card.get("name", card_id),
+        "name": card.get("name", resolved_card_id),
         "primary": card.get("primary", "(ability text unavailable)"),
         "secondary": card.get("secondary", "(ability text unavailable)"),
     }
@@ -269,9 +213,9 @@ def _build_turn_order_tracker(state: GameState) -> list[dict[str, Any]]:
         if not player:
             continue
         initiatives = [
-            i
-            for i in (_parse_strategy_card_initiative(cid) for cid in player.strategy_card_ids)
-            if i is not None
+            initiative
+            for cid in player.strategy_card_ids
+            if cid.isdigit() and 1 <= (initiative := int(cid)) <= 8
         ]
         if not initiatives:
             continue
