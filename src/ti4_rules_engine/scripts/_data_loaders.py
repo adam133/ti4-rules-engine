@@ -21,10 +21,11 @@ from __future__ import annotations
 import functools
 import json
 import pathlib
+import posixpath
 import sys
 from typing import Any
 from urllib.error import URLError
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 from urllib.request import urlopen
 
 from ti4_rules_engine.models.unit import Unit, UnitType
@@ -53,7 +54,7 @@ _ALLOWED_REMOTE_DATA_URL_PREFIX = (
     "https://raw.githubusercontent.com/AsyncTI4/TI4_map_generator_bot/master/"
     "src/main/resources/data/"
 )
-_ALLOWED_REMOTE_DATA_PATH_PREFIX = "/AsyncTI4/TI4_map_generator_bot/master/src/main/resources/data/"
+_ALLOWED_REMOTE_DATA_PATH_PREFIX = urlparse(_ALLOWED_REMOTE_DATA_URL_PREFIX).path
 # Keep PoK as a last-resort fallback because it is the default/common set and
 # includes the standard ``pok1``-``pok8`` cards shown in analyze summaries.
 _DEFAULT_STRATEGY_CARD_FALLBACK_FILE = "pok.json"
@@ -94,13 +95,16 @@ def _load_json_records_from_dir(data_dir: pathlib.Path) -> list[dict[str, Any]]:
 def _load_json_records_from_url(url: str) -> list[dict[str, Any]]:
     """Return dict records from a JSON payload at *url*."""
     parsed = urlparse(url)
+    decoded_path = unquote(parsed.path)
+    normalised_path = posixpath.normpath(decoded_path)
+    if decoded_path.endswith("/"):
+        normalised_path = f"{normalised_path}/"
     if (
         parsed.scheme != "https"
         or parsed.netloc != "raw.githubusercontent.com"
         or not url.startswith(_ALLOWED_REMOTE_DATA_URL_PREFIX)
-        or not parsed.path.startswith(_ALLOWED_REMOTE_DATA_PATH_PREFIX)
-        or ".." in parsed.path
-        or "%" in parsed.path
+        or not normalised_path.startswith(_ALLOWED_REMOTE_DATA_PATH_PREFIX)
+        or ".." in decoded_path
     ):
         return []
     try:

@@ -92,4 +92,12 @@ def test_load_json_records_from_url_rejects_untrusted_urls(monkeypatch) -> None:
         _raise_if_called,
     )
 
-    assert _data_loaders._load_json_records_from_url("https://example.com/data.json") == []
+    rejected_urls = [
+        "https://example.com/data.json",
+        "http://raw.githubusercontent.com/AsyncTI4/TI4_map_generator_bot/master/src/main/resources/data/strategy_cards/pok.json",
+        "https://raw.githubusercontent.com/AsyncTI4/TI4_map_generator_bot/master/README.md",
+        "https://raw.githubusercontent.com/AsyncTI4/TI4_map_generator_bot/master/src/main/resources/data/strategy_cards/../pok.json",
+        "https://raw.githubusercontent.com/AsyncTI4/TI4_map_generator_bot/master/src/main/resources/data/strategy_cards/%2e%2e/pok.json",
+    ]
+    for url in rejected_urls:
+        assert _data_loaders._load_json_records_from_url(url) == []
