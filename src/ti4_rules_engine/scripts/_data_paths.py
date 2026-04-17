@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pathlib
 
-_SUBMODULE_RESOURCES_RELATIVE_PATHS = (
+_SUBMODULE_RESOURCES_RELATIVE_PATH_CANDIDATES = (
     pathlib.Path("data/TI4_map_generator_bot/src/main/resources"),
     pathlib.Path("ti4_rules_engine/data/TI4_map_generator_bot/src/main/resources"),
 )
@@ -25,7 +25,7 @@ def _locate_asyncti4_resources_dir() -> pathlib.Path:
     checked: list[pathlib.Path] = []
     seen: set[pathlib.Path] = set()
     for root in _iter_search_roots():
-        for relative_path in _SUBMODULE_RESOURCES_RELATIVE_PATHS:
+        for relative_path in _SUBMODULE_RESOURCES_RELATIVE_PATH_CANDIDATES:
             candidate = (root / relative_path).resolve()
             if candidate in seen:
                 continue
