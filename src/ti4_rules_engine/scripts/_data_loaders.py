@@ -105,7 +105,7 @@ def _load_json_records_from_url(url: str) -> list[dict[str, Any]]:
         or not decoded_path.startswith(_ALLOWED_REMOTE_DATA_PATH_PREFIX)
         or not normalised_path.startswith(_ALLOWED_REMOTE_DATA_PATH_PREFIX)
         or any(segment == ".." for segment in decoded_segments)
-        or "%" in decoded_path
+        or "%" in parsed.path
     ):
         return []
     try:
