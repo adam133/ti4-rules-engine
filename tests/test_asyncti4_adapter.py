@@ -551,6 +551,27 @@ class TestTileUnitDataInExtra:
         state = from_asyncti4(SAMPLE_DATA)
         assert state.extra["tile_unit_data"] == {}
 
+    def test_strategy_card_id_map_stored_in_extra(self) -> None:
+        data = {
+            **SAMPLE_DATA,
+            "strategyCardIdMap": {"4": "te4construction", "7": "pok7technology"},
+        }
+        state = from_asyncti4(data)
+        assert state.extra["strategy_card_id_map"]["4"] == "te4construction"
+        assert state.extra["strategy_card_id_map"]["7"] == "pok7technology"
+
+    def test_strategy_card_id_map_does_not_fall_back_to_strategy_cards(self) -> None:
+        state = from_asyncti4(SAMPLE_DATA)
+        assert state.extra["strategy_card_id_map"] == {}
+
+    def test_strategy_card_set_identifier_stored_in_extra(self) -> None:
+        data = {
+            **SAMPLE_DATA,
+            "strategyCardSet": "te",
+        }
+        state = from_asyncti4(data)
+        assert state.extra["strategy_card_set"] == "te"
+
 
 # ---------------------------------------------------------------------------
 # Web-data API: nested objectives format

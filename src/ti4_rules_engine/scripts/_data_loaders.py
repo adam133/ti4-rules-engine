@@ -36,6 +36,8 @@ _ASYNCTI4_RESOURCES_DIR = _ASYNCTI4_SUBMODULE_ROOT / "src" / "main" / "resources
 _DATA_DIR = _ASYNCTI4_RESOURCES_DIR / "data"
 _ASYNCTI4_DATA_DIR = _ASYNCTI4_RESOURCES_DIR
 _TECH_DATA_DIR = _DATA_DIR / "technologies"
+_STRATEGY_CARD_DATA_DIR = _DATA_DIR / "strategy_cards"
+_STRATEGY_CARD_SETS_FILE = _DATA_DIR / "strategy_card_sets" / "strategyCardSets.json"
 _PUBLIC_OBJECTIVES_DATA_DIR = _DATA_DIR / "public_objectives"
 _LEADERS_DATA_DIR = _DATA_DIR / "leaders"
 _UNITS_DATA_DIR = _DATA_DIR / "units"
@@ -61,7 +63,7 @@ def _load_json_records_from_dir(data_dir: pathlib.Path) -> list[dict[str, Any]]:
         try:
             with path.open(encoding="utf-8") as fh:
                 data = json.load(fh)
-        except OSError, json.JSONDecodeError:
+        except (OSError, json.JSONDecodeError):
             continue
         if isinstance(data, list):
             records.extend(item for item in data if isinstance(item, dict))
@@ -109,7 +111,7 @@ def _load_fighter_ii_aliases_cached() -> frozenset[str]:
         }
         aliases.add(_FIGHTER_II_TECH_ID)
         return frozenset(aliases)
-    except OSError, json.JSONDecodeError, KeyError, TypeError:
+    except (OSError, json.JSONDecodeError, KeyError, TypeError):
         return frozenset({_FIGHTER_II_TECH_ID})
 
 
@@ -155,8 +157,91 @@ def _load_action_tech_names_cached() -> dict[str, str]:
             and "name" in t
             and "ACTION:" in t.get("text", "")
         }
-    except OSError, json.JSONDecodeError, KeyError, TypeError:
+    except (OSError, json.JSONDecodeError, KeyError, TypeError):
         return {}
+
+
+# ---------------------------------------------------------------------------
+# Strategy-card loaders
+# ---------------------------------------------------------------------------
+
+
+def fetch_strategy_card_data() -> dict[str, dict[str, Any]]:
+    """Return a mapping of strategy-card ID → display metadata."""
+    return _load_strategy_card_data_cached()
+
+
+def fetch_strategy_card_set_data() -> dict[str, dict[str, Any]]:
+    """Return a mapping of strategy-card set alias → set metadata."""
+    return _load_strategy_card_set_data_cached()
+
+
+def _normalise_strategy_card_text(value: object) -> str:
+    """Normalise AsyncTI4 strategy-card text payloads to one display string."""
+    if isinstance(value, list):
+        text_parts: list[str] = []
+        for part in value:
+            text = str(part).strip()
+            if text:
+                text_parts.append(text)
+        return " ".join(text_parts)
+    if isinstance(value, str):
+        return value.strip()
+    return ""
+
+
+@functools.cache
+def _load_strategy_card_data_cached() -> dict[str, dict[str, Any]]:
+    """Cached implementation of :func:`fetch_strategy_card_data`."""
+    records = _load_json_records_from_dir(_STRATEGY_CARD_DATA_DIR)
+    strategy_cards: dict[str, dict[str, Any]] = {}
+    for card in records:
+        if not isinstance(card, dict):
+            continue
+        card_id = card.get("id")
+        if not card_id:
+            continue
+        primary = _normalise_strategy_card_text(card.get("primaryTexts"))
+        secondary = _normalise_strategy_card_text(card.get("secondaryTexts"))
+        strategy_cards[str(card_id)] = {
+            "id": str(card_id),
+            "name": str(card.get("name") or card_id),
+            "initiative": card.get("initiative"),
+            "primary": primary,
+            "secondary": secondary,
+            "source": card.get("source"),
+        }
+    return strategy_cards
+
+
+@functools.cache
+def _load_strategy_card_set_data_cached() -> dict[str, dict[str, Any]]:
+    """Cached implementation of :func:`fetch_strategy_card_set_data`."""
+    try:
+        with _STRATEGY_CARD_SETS_FILE.open(encoding="utf-8") as fh:
+            raw = json.load(fh)
+    except (OSError, json.JSONDecodeError):
+        return {}
+    if not isinstance(raw, list):
+        return {}
+    sets_by_alias: dict[str, dict[str, Any]] = {}
+    for entry in raw:
+        if not isinstance(entry, dict):
+            continue
+        alias = entry.get("alias")
+        if not alias:
+            continue
+        sc_ids = entry.get("scIDs")
+        if not isinstance(sc_ids, list):
+            sc_ids = []
+        sets_by_alias[str(alias)] = {
+            "alias": str(alias),
+            "name": entry.get("name", alias),
+            "description": entry.get("description"),
+            "source": entry.get("source"),
+            "scIDs": [str(sc_id) for sc_id in sc_ids],
+        }
+    return sets_by_alias
 
 
 # ---------------------------------------------------------------------------
@@ -272,7 +357,7 @@ def _load_leader_data_cached() -> dict[str, dict[str, Any]]:
         return {
             entry["id"]: entry for entry in leaders if isinstance(entry, dict) and "id" in entry
         }
-    except OSError, json.JSONDecodeError, KeyError, TypeError:
+    except (OSError, json.JSONDecodeError, KeyError, TypeError):
         return {}
 
 
@@ -306,7 +391,7 @@ def _load_system_data_cached() -> dict[str, dict[str, Any]]:
                 data = json.load(fh)
             if isinstance(data, dict) and "id" in data:
                 systems[str(data["id"])] = data
-    except OSError, json.JSONDecodeError, KeyError, TypeError:
+    except (OSError, json.JSONDecodeError, KeyError, TypeError):
         return {}
     return systems
 
@@ -321,7 +406,7 @@ def _load_planet_data_cached() -> dict[str, dict[str, Any]]:
                 data = json.load(fh)
             if isinstance(data, dict) and "id" in data:
                 planets[str(data["id"])] = data
-    except OSError, json.JSONDecodeError, KeyError, TypeError:
+    except (OSError, json.JSONDecodeError, KeyError, TypeError):
         return {}
     return planets
 
@@ -340,7 +425,7 @@ def _load_attachment_data_cached() -> dict[str, dict[str, Any]]:
                         attachments[str(item["id"])] = item
             elif isinstance(data, dict) and "id" in data:
                 attachments[str(data["id"])] = data
-    except OSError, json.JSONDecodeError, KeyError, TypeError:
+    except (OSError, json.JSONDecodeError, KeyError, TypeError):
         return {}
     return attachments
 
@@ -430,7 +515,7 @@ def _load_unit_data_cached(faction: str | None = None) -> dict[str, Unit]:
             # has no "upgradesFromUnitId" field.
             if "upgradesFromUnitId" not in entry:
                 units[async_id] = model
-    except OSError, json.JSONDecodeError, KeyError, TypeError:
+    except (OSError, json.JSONDecodeError, KeyError, TypeError):
         pass
 
     # 2. Apply faction-specific overrides when requested.
@@ -450,7 +535,7 @@ def _load_unit_data_cached(faction: str | None = None) -> dict[str, Unit]:
                     continue
                 async_id = entry["asyncId"]
                 units[async_id] = model
-        except OSError, json.JSONDecodeError, KeyError, TypeError:
+        except (OSError, json.JSONDecodeError, KeyError, TypeError):
             pass
 
     # Add "cr" as an alias for "ca" (cruiser) – some AsyncTI4 exports use

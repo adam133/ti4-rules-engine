@@ -32,7 +32,6 @@ import surface used by external consumers and tests.
 from __future__ import annotations
 
 import json
-import re
 import sys
 import urllib.request
 from typing import TYPE_CHECKING, Any
@@ -73,6 +72,8 @@ from ti4_rules_engine.scripts._data_loaders import (  # noqa: F401
     fetch_leader_data,
     fetch_objective_data,
     fetch_planet_data,
+    fetch_strategy_card_data,
+    fetch_strategy_card_set_data,
     fetch_system_data,
     fetch_tech_names,
     fetch_unit_data,
@@ -144,53 +145,6 @@ if TYPE_CHECKING:
 
 WEB_DATA_URL_TEMPLATE = "https://bot.asyncti4.com/api/public/game/{game}/web-data"
 
-_STRATEGY_CARD_DATA_BY_INITIATIVE: dict[int, dict[str, str]] = {
-    1: {
-        "name": "Leadership",
-        "primary": "Gain 3 command tokens. Then spend influence to gain additional command tokens.",
-        "secondary": "Spend 1 strategy token to gain 1 command token.",
-    },
-    2: {
-        "name": "Diplomacy",
-        "primary": "Choose 1 system and ready all planets you control in that system.",
-        "secondary": "Spend 1 strategy token to ready up to 2 exhausted planets you control.",
-    },
-    3: {
-        "name": "Politics",
-        "primary": "Choose another player to gain the speaker token. Draw 2 action cards.",
-        "secondary": "Spend 1 strategy token to draw 2 action cards.",
-    },
-    4: {
-        "name": "Construction",
-        "primary": "Place 1 space dock and 1 PDS on planets you control.",
-        "secondary": (
-            "Spend 1 strategy token to place either 1 space dock or 1 PDS on a planet you control."
-        ),
-    },
-    5: {
-        "name": "Trade",
-        "primary": "Gain 3 trade goods and replenish commodities for all players.",
-        "secondary": "Spend 1 strategy token to replenish your commodities.",
-    },
-    6: {
-        "name": "Warfare",
-        "primary": "Remove 1 command token from the game board; then redistribute command tokens.",
-        "secondary": "Spend 1 strategy token to use production in your home system.",
-    },
-    7: {
-        "name": "Technology",
-        "primary": "Research 1 technology.",
-        "secondary": "Spend 1 strategy token and 6 resources to research 1 technology.",
-    },
-    8: {
-        "name": "Imperial",
-        "primary": (
-            "Score 1 public objective if possible; if you control Mecatol Rex, "
-            "gain 1 victory point."
-        ),
-        "secondary": "Spend 1 strategy token to draw 1 secret objective.",
-    },
-}
 _UNKNOWN_INITIATIVE_SORT_KEY = 99
 
 # ---------------------------------------------------------------------------
@@ -212,24 +166,36 @@ def fetch_game_json(game_number: str) -> dict:
 
 
 def _parse_strategy_card_initiative(card_id: str) -> int | None:
-    """Extract initiative from strategy-card IDs such as '3' or 'pok3politics'."""
+    """Extract initiative from numeric strategy-card initiative IDs."""
     if card_id.isdigit():
         initiative = int(card_id)
         return initiative if 1 <= initiative <= 8 else None
-    match = re.search(r"(\d+)", card_id)
-    if not match:
-        return None
-    initiative = int(match.group(1))
-    return initiative if 1 <= initiative <= 8 else None
+    return None
 
 
 def _strategy_card_details(card_id: str) -> dict[str, Any]:
     """Return display metadata for a strategy card ID."""
+    return _strategy_card_details_for_map(card_id, strategy_card_id_map=None)
+
+
+def _strategy_card_details_for_map(
+    card_id: str, strategy_card_id_map: dict[str, str] | None
+) -> dict[str, Any]:
+    """Return display metadata for a strategy card ID and optional initiative→ID map."""
+    strategy_cards = fetch_strategy_card_data()
     initiative = _parse_strategy_card_initiative(card_id)
-    card = _STRATEGY_CARD_DATA_BY_INITIATIVE.get(initiative, {})
+    resolved_card_id = (
+        strategy_card_id_map.get(str(initiative), card_id)
+        if strategy_card_id_map and initiative is not None
+        else card_id
+    )
+    card = strategy_cards.get(resolved_card_id, {})
+    card_initiative = card.get("initiative")
+    if isinstance(card_initiative, int):
+        initiative = card_initiative
     return {
         "initiative": initiative,
-        "name": card.get("name", card_id),
+        "name": card.get("name", resolved_card_id),
         "primary": card.get("primary", "(ability text unavailable)"),
         "secondary": card.get("secondary", "(ability text unavailable)"),
     }
@@ -238,6 +204,9 @@ def _strategy_card_details(card_id: str) -> dict[str, Any]:
 def _build_turn_order_tracker(state: GameState) -> list[dict[str, Any]]:
     """Build a turn tracker sorted by lowest held strategy-card initiative."""
     speaker_id = state.turn_order.speaker_id
+    strategy_card_id_map = _normalise_strategy_card_id_map(
+        state.extra.get("strategy_card_id_map", {})
+    )
     entries: list[dict[str, Any]] = []
     for player_id in state.turn_order.order:
         player = state.players.get(player_id)
@@ -251,7 +220,7 @@ def _build_turn_order_tracker(state: GameState) -> list[dict[str, Any]]:
         if not initiatives:
             continue
         lowest = min(initiatives)
-        details = _strategy_card_details(str(lowest))
+        details = _strategy_card_details_for_map(str(lowest), strategy_card_id_map)
         entries.append(
             {
                 "player_id": player_id,
@@ -262,6 +231,47 @@ def _build_turn_order_tracker(state: GameState) -> list[dict[str, Any]]:
         )
     entries.sort(key=lambda e: e["initiative"])
     return entries
+
+
+def _normalise_strategy_card_id_map(raw_map: object) -> dict[str, str]:
+    """Normalise initiative→strategy-card-id maps to ``dict[str, str]``."""
+    if not isinstance(raw_map, dict):
+        return {}
+    return {
+        str(initiative): str(card_id)
+        for initiative, card_id in raw_map.items()
+        if str(card_id).strip()
+    }
+
+
+def _resolve_strategy_card_set_label(
+    state: GameState, strategy_card_id_map: dict[str, str]
+) -> str | None:
+    """Resolve a human-readable strategy-card set label from state metadata."""
+    raw_set = state.extra.get("strategy_card_set")
+    set_records = fetch_strategy_card_set_data()
+    if isinstance(raw_set, str) and raw_set.strip():
+        set_id = raw_set.strip()
+        rec = set_records.get(set_id)
+        return str(rec.get("name") or set_id) if rec else set_id
+    if not strategy_card_id_map:
+        return None
+    numeric_pairs: list[tuple[int, str]] = []
+    for key, card_id in strategy_card_id_map.items():
+        if not key.isdigit():
+            continue
+        try:
+            initiative = int(key)
+        except ValueError:
+            continue
+        numeric_pairs.append((initiative, card_id))
+    ordered_ids = [card_id for _, card_id in sorted(numeric_pairs)]
+    if not ordered_ids:
+        return None
+    for rec in set_records.values():
+        if rec.get("scIDs") == ordered_ids:
+            return str(rec.get("name") or rec.get("alias"))
+    return None
 
 
 def print_game_summary(state: GameState) -> None:
@@ -285,6 +295,12 @@ def print_game_summary(state: GameState) -> None:
     print(f"  Game:   {state.game_id}")
     print(f"  Round:  {state.round_number}")
     print(f"  Phase:  {state.phase.upper()}")
+    strategy_card_id_map = _normalise_strategy_card_id_map(
+        state.extra.get("strategy_card_id_map", {})
+    )
+    strategy_card_set_label = _resolve_strategy_card_set_label(state, strategy_card_id_map)
+    if strategy_card_set_label:
+        print(f"  Strategy card set: {strategy_card_set_label}")
     if state.active_player_id:
         print(f"  Active: {state.active_player_id}")
     print(f"  Speaker: {state.turn_order.speaker_id}")
@@ -375,6 +391,9 @@ def print_player_summary(state: GameState, player_options_map: dict) -> None:
                 merged["description"] = bundled_desc
         obj_data[obj_id] = merged
     tile_unit_data: dict[str, Any] = state.extra.get("tile_unit_data", {})
+    strategy_card_id_map = _normalise_strategy_card_id_map(
+        state.extra.get("strategy_card_id_map", {})
+    )
     planet_ri = _get_planet_ri(tile_unit_data)
     player_leaders: dict[str, list[dict[str, Any]]] = state.extra.get("player_leaders", {})
 
@@ -444,7 +463,7 @@ def print_player_summary(state: GameState, player_options_map: dict) -> None:
             )
             print("    Strategy cards:")
             for card_id in sorted_cards:
-                details = _strategy_card_details(card_id)
+                details = _strategy_card_details_for_map(card_id, strategy_card_id_map)
                 initiative = details["initiative"]
                 init_suffix = f" ({initiative})" if initiative is not None else ""
                 print(f"      • {details['name']}{init_suffix}")

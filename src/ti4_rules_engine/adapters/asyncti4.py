@@ -65,6 +65,15 @@ _PHASE_MAP: dict[str, GamePhase] = {
     "agenda": GamePhase.AGENDA,
 }
 
+_STRATEGY_CARD_SET_KEYS: tuple[str, ...] = (
+    "strategyCardSet",
+    "strategyCardSetAlias",
+    "strategyCardSetId",
+    "strategyCardSetID",
+    "scSetId",
+    "scSetID",
+)
+
 
 # ---------------------------------------------------------------------------
 # AsyncTI4 Pydantic schemas – field names match the raw JSON exactly
@@ -212,6 +221,13 @@ class AsyncTI4GameData(BaseModel):
         default_factory=list,
         description="Top-level strategy card metadata used to infer the current phase.",
     )
+    strategyCardIdMap: dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "Optional initiative→strategy-card-id map from AsyncTI4 web-data exports. "
+            "Keys are initiative values represented as strings."
+        ),
+    )
     tileUnitData: dict[str, Any] = Field(
         default_factory=dict,
         description=(
@@ -358,7 +374,9 @@ def from_asyncti4(data: dict[str, Any] | AsyncTI4GameData) -> GameState:
     * The game phase is inferred (see :func:`_infer_phase`).
       Override ``GameState.phase`` after conversion if needed.
     """
+    strategy_card_set: str | None = None
     if isinstance(data, dict):
+        strategy_card_set = _extract_strategy_card_set_identifier(data)
         data = AsyncTI4GameData.model_validate(data)
 
     phase = _infer_phase(data)
@@ -489,6 +507,12 @@ def from_asyncti4(data: dict[str, Any] | AsyncTI4GameData) -> GameState:
                         entry["description"] = obj["description"]
                     api_objective_data[key] = entry
 
+    strategy_card_id_map: dict[str, str] = {
+        str(initiative): str(card_id)
+        for initiative, card_id in data.strategyCardIdMap.items()
+        if str(card_id).strip()
+    }
+
     return GameState(
         game_id=data.gameName,
         round_number=data.gameRound,
@@ -509,5 +533,21 @@ def from_asyncti4(data: dict[str, Any] | AsyncTI4GameData) -> GameState:
                 for pos, tile_id in [entry.split(":", 1)]
             },
             "objective_data": api_objective_data,
+            "strategy_card_id_map": strategy_card_id_map,
+            "strategy_card_set": strategy_card_set,
         },
     )
+
+
+def _extract_strategy_card_set_identifier(raw_data: dict[str, Any]) -> str | None:
+    """Extract strategy-card set identifier from known AsyncTI4 payload keys."""
+    for key in _STRATEGY_CARD_SET_KEYS:
+        value = raw_data.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+        if isinstance(value, dict):
+            for nested_key in ("alias", "id", "name"):
+                nested = value.get(nested_key)
+                if isinstance(nested, str) and nested.strip():
+                    return nested.strip()
+    return None
