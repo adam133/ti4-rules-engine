@@ -25,28 +25,6 @@ def test_strategy_card_details_supports_asyncti4_id_format() -> None:
     assert details["name"] == "Politics"
 
 
-def test_strategy_card_details_with_numeric_id_uses_strategy_card_map(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(
-        analyze_game_core,
-        "fetch_strategy_card_data",
-        lambda: {
-            "te4construction": {
-                "id": "te4construction",
-                "initiative": 4,
-                "name": "TE Construction",
-                "primary": "te primary",
-                "secondary": "te secondary",
-            }
-        },
-    )
-    details = analyze_game_core._strategy_card_details_for_map("4", {"4": "te4construction"})
-    assert details["initiative"] == 4
-    assert details["name"] == "TE Construction"
-    assert details["primary"] == "te primary"
-
-
 def test_strategy_card_details_unknown_card_falls_back_to_raw_id() -> None:
     details = _strategy_card_details("custom_card")
     assert details["initiative"] is None

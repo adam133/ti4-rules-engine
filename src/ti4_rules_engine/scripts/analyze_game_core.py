@@ -213,9 +213,9 @@ def _build_turn_order_tracker(state: GameState) -> list[dict[str, Any]]:
         if not player:
             continue
         initiatives = [
-            initiative
-            for cid in player.strategy_card_ids
-            if cid.isdigit() and 1 <= (initiative := int(cid)) <= 8
+            i
+            for i in (_parse_strategy_card_initiative(cid) for cid in player.strategy_card_ids)
+            if i is not None
         ]
         if not initiatives:
             continue
